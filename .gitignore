@@ -1,2 +1,9 @@
 # Ignore binaries
 larynx
+
+# Ignore secrets
+.env
+docker-compose.yml
+
+# Ignore data
+data/

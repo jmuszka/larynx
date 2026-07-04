@@ -1,0 +1,12 @@
+services:
+  neo4j:
+    image: neo4j:2026.05.0
+    container_name: neo4j
+    restart: always
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD}
+    volumes:
+      - /path/to/your/data:/data
