@@ -10,12 +10,17 @@ import (
 
 func (s *Server) wordsRouter() http.Handler {
 	r := chi.NewRouter()
+
+	r.Get("/{word}/etymology", s.handleGetEtymology)
+	// r.Get("/{word}/history", s.handleGetHistory)
+	// r.Get("/{word}/definition", s.handleGetDefinition)
+	// r.Get("/{word}/ipa", s.handleGetIpa)
 	r.Get("/", s.handleSearchWords)
-	r.Get("/{word}", s.handleGetWord)
+
 	return r
 }
 
-func (s *Server) handleGetWord(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	result, err := neo4j.ExecuteQuery(s.ctx, s.driver, `
@@ -38,6 +43,30 @@ func (s *Server) handleGetWord(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(records)
+}
+
+// TODO: implement
+func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "Not implemented",
+	})
+}
+
+// TODO: implement
+func (s *Server) handleGetDefinition(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "Not implemented",
+	})
+}
+
+// TODO: implement
+func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "Not implemented",
+	})
 }
 
 func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
