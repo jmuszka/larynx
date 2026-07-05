@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
+	_ "modernc.org/sqlite"
 )
 
 type Config struct {
@@ -16,12 +18,14 @@ type Config struct {
 	Neo4jUri      string
 	Neo4jUser     string
 	Neo4jPassword string
+	SqlitePath    string
 	Version       string
 }
 
 type Server struct {
 	*http.Server
 	driver  neo4j.DriverWithContext
+	db      *sql.DB
 	ctx     context.Context
 	version string
 }
@@ -38,10 +42,33 @@ func New(cfg Config) *Server {
 	if err = driver.VerifyConnectivity(ctx); err != nil {
 		panic(err)
 	}
-	fmt.Println("Connection established.")
+	fmt.Println("Neo4j connection established.")
+
+	// Connect to SQLite database
+	db, err := sql.Open("sqlite", cfg.SqlitePath)
+	if err != nil {
+		panic(err)
+	}
+	if err = db.PingContext(ctx); err != nil {
+		panic(err)
+	}
+	if _, err = db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS articles (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			slug        TEXT NOT NULL UNIQUE,
+			title       TEXT NOT NULL,
+			content     TEXT NOT NULL,
+			description TEXT NOT NULL,
+			published 	DATETIME DEFAULT CURRENT_TIMESTAMP,
+			modified    DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`); err != nil {
+		panic(err)
+	}
+	fmt.Println("SQLite connection established.")
 
 	// Create server
-	s := &Server{driver: driver, ctx: ctx, version: cfg.Version}
+	s := &Server{driver: driver, db: db, ctx: ctx, version: cfg.Version}
 
 	// Routing
 	r := chi.NewRouter()

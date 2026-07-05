@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -10,7 +11,7 @@ import (
 func (s *Server) blogRouter() http.Handler {
 	r := chi.NewRouter()
 
-	// r.Get("/articles", s.handleGetArticles)
+	r.Get("/articles", s.handleGetArticles)
 	// r.Post("/articles/create", s.handleCreateArticle)
 	// r.Get("/articles/{slug}", s.handleGetArticleBySlug)
 	// r.Patch("/articles/{slug}", s.handleUpdateArticleBySlug)
@@ -22,8 +23,43 @@ func (s *Server) blogRouter() http.Handler {
 // TODO: implement
 func (s *Server) handleGetArticles(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status": "Not implemented",
+
+	type Article struct {
+		Slug        string `json:"slug"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Published   string `json:"published"` // Adjust to time.Time if your driver parses dates
+		Modified    string `json:"modified"`
+	}
+
+	// Retrieve blogposts
+	rows, err := s.db.Query("SELECT slug, title, description, published, modified FROM articles ORDER BY modified DESC")
+	if err != nil {
+		log.Fatalf("Query failed: %v", err)
+	}
+	defer rows.Close()
+
+	// Parse results
+	articles := []Article{}
+	for rows.Next() {
+		var a Article
+		// Scan targets MUST match the order of columns in SELECT statement
+		err := rows.Scan(&a.Slug, &a.Title, &a.Description, &a.Published, &a.Modified)
+		if err != nil {
+			http.Error(w, `{"error": "Failed to process data"}`, http.StatusInternalServerError)
+			log.Printf("Row scan failed: %v", err)
+			return
+		}
+		articles = append(articles, a)
+	}
+	if err = rows.Err(); err != nil {
+		http.Error(w, `{"error": "Database cursor error"}`, http.StatusInternalServerError)
+		log.Printf("Iteration error: %v", err)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string][]Article{
+		"articles": articles,
 	})
 }
 

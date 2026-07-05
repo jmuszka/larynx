@@ -25,6 +25,7 @@ func main() {
 		Neo4jUser:     os.Getenv("NEO4J_USER"),
 		Neo4jPassword: os.Getenv("NEO4J_PASSWORD"),
 		Version:       version,
+		SqlitePath:    os.Getenv("SQLITE_PATH"),
 	}
 
 	s := server.New(cfg)
