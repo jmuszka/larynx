@@ -7,3 +7,5 @@ docker-compose.yml
 
 # Ignore data
 data/
+*.gz
+*.csv
