@@ -14,14 +14,13 @@ func (s *Server) blogRouter() http.Handler {
 
 	r.Get("/articles", s.handleGetArticles)
 	r.Post("/articles/create", s.handleCreateArticle)
-	// r.Get("/articles/{slug}", s.handleGetArticleBySlug)
+	r.Get("/articles/{slug}", s.handleGetArticleBySlug)
 	// r.Patch("/articles/{slug}", s.handleUpdateArticleBySlug)
 	// r.Delete("/articles/{slug}", s.handleDeleteArticleBySlug)
 
 	return r
 }
 
-// TODO: implement
 func (s *Server) handleGetArticles(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -64,7 +63,6 @@ func (s *Server) handleGetArticles(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// TODO: implement
 func (s *Server) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -98,12 +96,34 @@ func (s *Server) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// TODO: implement
 func (s *Server) handleGetArticleBySlug(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status": "Not implemented",
-	})
+
+	slug := chi.URLParam(r, "slug")
+
+	type Article struct {
+		Slug        string `json:"slug"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Content     string `json:"content"`
+		Published   string `json:"published"` // Adjust to time.Time if your driver parses dates
+		Modified    string `json:"modified"`
+	}
+
+	var a Article
+
+	// Retrieve blogpost
+	err := s.db.QueryRow(
+		"SELECT slug, title, description, content, published, modified FROM articles WHERE slug LIKE ?",
+		slug,
+	).Scan(&a.Slug, &a.Title, &a.Description, &a.Content, &a.Published, &a.Modified)
+	if err != nil {
+		log.Printf("Query failed: %v", err)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(a)
 }
 
 // TODO: implement
