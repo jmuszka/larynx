@@ -72,14 +72,19 @@ func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Parse GET parameters
 	prefix := r.URL.Query().Get("prefix")
 
-	result, err := neo4j.ExecuteQuery(s.ctx, s.driver, `
-		MATCH (n:Word)
-		WHERE n.lang = "English"
-		AND n.term IS NOT NULL AND n.term STARTS WITH $prefix
+	// Construct Cypher query
+	const query = `
+		MATCH (n:Word { lang: "English" })
+		WHERE n.term IS NOT NULL AND n.term STARTS WITH toLower($prefix)
 		RETURN DISTINCT n.term AS term
-	`,
+		ORDER BY size(term), term ASC
+	`
+
+	// Fetch search results from Neo4j
+	result, err := neo4j.ExecuteQuery(s.ctx, s.driver, query,
 		map[string]any{
 			"prefix": prefix,
 		}, neo4j.EagerResultTransformer,
@@ -88,6 +93,7 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
+	// Package search results into an array
 	terms := make([]string, 0, len(result.Records))
 	for _, record := range result.Records {
 		if term, ok := record.Get("term"); ok {
