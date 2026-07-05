@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -48,10 +47,10 @@ func New(cfg Config) *Server {
 	r.Use(middleware.Recoverer)
 	r.Use(cors.AllowAll().Handler)
 
-	// Create endpoints
-	r.Get("/health", s.handleHealth)
-	r.Get("/words/{word}", s.handleGetWord)
-	r.Get("/words", s.handleSearchWords)
+	r.Mount("/health", s.healthRouter())
+	r.Mount("/words", s.wordsRouter())
+	r.Mount("/games", s.gamesRouter())
+	r.Mount("/blog", s.blogRouter())
 
 	// Start server
 	s.Server = &http.Server{
@@ -59,69 +58,4 @@ func New(cfg Config) *Server {
 		Handler: r,
 	}
 	return s
-}
-
-func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status":  "ok",
-		"version": "2026.07.04",
-	})
-}
-
-func (s *Server) handleGetWord(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	result, err := neo4j.ExecuteQuery(s.ctx, s.driver, `
-		MATCH (n:Word)
-		WHERE n.lang = "English"
-		AND n.term IS NOT NULL AND n.term =~ $word
-		RETURN n
-	`,
-		map[string]any{
-			"word": "(?i)" + chi.URLParam(r, "word"),
-		}, neo4j.EagerResultTransformer,
-		neo4j.ExecuteQueryWithDatabase("neo4j"))
-	if err != nil {
-		panic(err)
-	}
-
-	records := make([]map[string]any, len(result.Records))
-	for i, record := range result.Records {
-		records[i] = record.AsMap()
-	}
-
-	json.NewEncoder(w).Encode(records)
-}
-
-func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	queryParams := r.URL.Query()
-
-	prefix := queryParams.Get("prefix")
-
-	result, err := neo4j.ExecuteQuery(s.ctx, s.driver, `
-		MATCH (n:Word)
-		WHERE n.lang = "English"
-		AND n.term IS NOT NULL AND n.term STARTS WITH $prefix
-		RETURN DISTINCT n.term AS term
-	`,
-		map[string]any{
-			"prefix": prefix,
-		}, neo4j.EagerResultTransformer,
-		neo4j.ExecuteQueryWithDatabase("neo4j"))
-	if err != nil {
-		panic(err)
-	}
-
-	terms := make([]string, 0, len(result.Records))
-	for _, record := range result.Records {
-		if term, ok := record.Get("term"); ok {
-			if s, ok := term.(string); ok {
-				terms = append(terms, s)
-			}
-		}
-	}
-
-	json.NewEncoder(w).Encode(terms)
 }
