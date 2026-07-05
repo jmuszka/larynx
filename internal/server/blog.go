@@ -17,7 +17,7 @@ func (s *Server) blogRouter() http.Handler {
 	r.Post("/articles/create", s.handleCreateArticle)
 	r.Get("/articles/{slug}", s.handleGetArticleBySlug)
 	r.Patch("/articles/{slug}", s.handleUpdateArticleBySlug)
-	// r.Delete("/articles/{slug}", s.handleDeleteArticleBySlug)
+	r.Delete("/articles/{slug}", s.handleDeleteArticleBySlug)
 
 	return r
 }
@@ -172,7 +172,7 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 	query := fmt.Sprintf("UPDATE articles SET %s WHERE slug = ?", strings.Join(queryParts, ", "))
 	args = append(args, slug)
 
-	// Write new article to database
+	// Update article in database
 	_, err = s.db.Exec(query, args...)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -185,10 +185,19 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// TODO: implement
 func (s *Server) handleDeleteArticleBySlug(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	slug := chi.URLParam(r, "slug")
+
+	// Delete article from database
+	_, err := s.db.Exec("DELETE FROM articles WHERE slug = ?", slug)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
 	json.NewEncoder(w).Encode(map[string]string{
-		"status": "Not implemented",
+		"message": "Article deleted successfully",
 	})
 }
