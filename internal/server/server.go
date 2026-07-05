@@ -49,10 +49,7 @@ func New(cfg Config) *Server {
 	r.Use(middleware.Recoverer)
 	r.Use(cors.AllowAll().Handler)
 
-	r.Mount("/health", s.healthRouter())
-	r.Mount("/words", s.wordsRouter())
-	r.Mount("/games", s.gamesRouter())
-	r.Mount("/blog", s.blogRouter())
+	r.Mount("/api/v1", s.apiRouter())
 
 	// Start server
 	s.Server = &http.Server{
