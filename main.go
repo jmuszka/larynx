@@ -14,6 +14,8 @@ func Loadenv() {
 	}
 }
 
+const version = "preview"
+
 func main() {
 	Loadenv()
 
@@ -22,6 +24,7 @@ func main() {
 		Neo4jUri:      os.Getenv("NEO4J_URI"),
 		Neo4jUser:     os.Getenv("NEO4J_USER"),
 		Neo4jPassword: os.Getenv("NEO4J_PASSWORD"),
+		Version:       version,
 	}
 
 	s := server.New(cfg)

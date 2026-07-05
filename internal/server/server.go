@@ -16,12 +16,14 @@ type Config struct {
 	Neo4jUri      string
 	Neo4jUser     string
 	Neo4jPassword string
+	Version       string
 }
 
 type Server struct {
 	*http.Server
-	driver neo4j.DriverWithContext
-	ctx    context.Context
+	driver  neo4j.DriverWithContext
+	ctx     context.Context
+	version string
 }
 
 func New(cfg Config) *Server {
@@ -39,7 +41,7 @@ func New(cfg Config) *Server {
 	fmt.Println("Connection established.")
 
 	// Create server
-	s := &Server{driver: driver, ctx: ctx}
+	s := &Server{driver: driver, ctx: ctx, version: cfg.Version}
 
 	// Routing
 	r := chi.NewRouter()
