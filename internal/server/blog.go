@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -12,7 +13,7 @@ func (s *Server) blogRouter() http.Handler {
 	r := chi.NewRouter()
 
 	r.Get("/articles", s.handleGetArticles)
-	// r.Post("/articles/create", s.handleCreateArticle)
+	r.Post("/articles/create", s.handleCreateArticle)
 	// r.Get("/articles/{slug}", s.handleGetArticleBySlug)
 	// r.Patch("/articles/{slug}", s.handleUpdateArticleBySlug)
 	// r.Delete("/articles/{slug}", s.handleDeleteArticleBySlug)
@@ -66,8 +67,34 @@ func (s *Server) handleGetArticles(w http.ResponseWriter, r *http.Request) {
 // TODO: implement
 func (s *Server) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	type CreateArticleRequest struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Content     string `json:"content"`
+	}
+
+	// Parse input
+	var req CreateArticleRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON body"})
+		return
+	}
+	defer r.Body.Close()
+
+	// Write new article to database
+	slug := strings.Join(strings.Split(strings.ToLower(req.Title), " "), "-")
+	_, err = s.db.Exec("INSERT INTO articles (title, description, content, slug) VALUES (?, ?, ?, ?)", req.Title, req.Description, req.Content, slug)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
 	json.NewEncoder(w).Encode(map[string]string{
-		"status": "Not implemented",
+		"message": "Article created successfully",
 	})
 }
 
