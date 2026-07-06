@@ -4,7 +4,12 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	neturl "net/url"
+	"regexp"
+	"strings"
+	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/go-chi/chi/v5"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
 )
@@ -13,7 +18,7 @@ func (s *Server) wordsRouter() http.Handler {
 	r := chi.NewRouter()
 
 	r.Get("/{word}/etymology", s.handleGetEtymology)
-	// r.Get("/{word}/history", s.handleGetHistory)
+	r.Get("/{word}/history", s.handleGetHistory)
 	// r.Get("/{word}/definition", s.handleGetDefinition)
 	r.Get("/{word}/ipa", s.handleGetIpa)
 	r.Get("/", s.handleSearchWords)
@@ -46,11 +51,77 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(records)
 }
 
-// TODO: implement
 func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status": "Not implemented",
+
+	word := chi.URLParam(r, "word")
+
+	req, err := http.NewRequest("GET", "https://www.etymonline.com/search?q="+neturl.QueryEscape(word), nil)
+	if err != nil {
+		log.Printf("Failed to build request: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to fetch etymology page: %v", err)
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		log.Printf("Failed to parse HTML: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	doc.Find("script, style, nav, header, footer").Remove()
+
+	type Entry struct {
+		Word string `json:"word"`
+		Text string `json:"text"`
+	}
+
+	var entries []Entry
+	whitespace := regexp.MustCompile(`\s{2,}`)
+
+	// etymonline uses CSS modules — class names follow the pattern "word--*"
+	doc.Find("[class*='word--']").Each(func(_ int, sel *goquery.Selection) {
+		name := strings.TrimSpace(sel.Find("[class*='word__name']").Text())
+		if name == "" {
+			name = strings.TrimSpace(sel.Find("h1, h2, h3").First().Text())
+		}
+		text := strings.TrimSpace(sel.Find("[class*='word__defination'], [class*='word__def'], section").Text())
+		if text == "" {
+			text = strings.TrimSpace(sel.Find("p").Text())
+		}
+		text = whitespace.ReplaceAllString(text, " ")
+		if name != "" && text != "" {
+			entries = append(entries, Entry{Word: name, Text: text})
+		}
+	})
+
+	// Fall back to main content text if no structured entries matched
+	if len(entries) == 0 {
+		raw := doc.Find("main, [role='main'], article").Text()
+		if raw == "" {
+			raw = doc.Find("body").Text()
+		}
+		raw = whitespace.ReplaceAllString(strings.TrimSpace(raw), "\n")
+		entries = append(entries, Entry{Word: word, Text: raw})
+	}
+
+	json.NewEncoder(w).Encode(map[string]any{
+		"results": entries,
 	})
 }
 
