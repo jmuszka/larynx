@@ -10,3 +10,5 @@ data/
 *.gz
 *.csv
 *.sqlite
+*.txt
+*.db

@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -14,7 +15,7 @@ func (s *Server) wordsRouter() http.Handler {
 	r.Get("/{word}/etymology", s.handleGetEtymology)
 	// r.Get("/{word}/history", s.handleGetHistory)
 	// r.Get("/{word}/definition", s.handleGetDefinition)
-	// r.Get("/{word}/ipa", s.handleGetIpa)
+	r.Get("/{word}/ipa", s.handleGetIpa)
 	r.Get("/", s.handleSearchWords)
 
 	return r
@@ -61,14 +62,6 @@ func (s *Server) handleGetDefinition(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// TODO: implement
-func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status": "Not implemented",
-	})
-}
-
 func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -104,4 +97,27 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(terms)
+}
+
+func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	word := chi.URLParam(r, "word")
+
+	var ipa string
+
+	// Retrieve blogpost
+	err := s.db.QueryRow(
+		"SELECT ipa FROM ipa WHERE word LIKE ?",
+		word,
+	).Scan(&ipa)
+	if err != nil {
+		log.Printf("Query failed: %v", err)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{
+		"ipa": ipa,
+	})
 }
