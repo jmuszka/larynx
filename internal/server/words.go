@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	neturl "net/url"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/go-chi/chi/v5"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
 )
@@ -120,9 +123,51 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 		entries = append(entries, Entry{Word: word, Text: raw})
 	}
 
+	// Build a single text blob from all scraped entries to pass to the LLM
+	var raw strings.Builder
+	for _, e := range entries {
+		if e.Word != "" {
+			raw.WriteString(e.Word + ": ")
+		}
+		raw.WriteString(e.Text + "\n\n")
+	}
+
+	history, err := formatWordHistory(r.Context(), word, raw.String())
+	if err != nil {
+		log.Printf("LLM formatting failed: %v", err)
+		json.NewEncoder(w).Encode(map[string]any{"word": word, "results": entries})
+		return
+	}
+
 	json.NewEncoder(w).Encode(map[string]any{
-		"results": entries,
+		"word":    word,
+		"history": history,
 	})
+}
+
+func formatWordHistory(ctx context.Context, word, rawText string) (string, error) {
+	client := anthropic.NewClient()
+
+	resp, err := client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     anthropic.ModelClaudeOpus4_8,
+		MaxTokens: 512,
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock(fmt.Sprintf(
+				"Here is raw etymological data for the word %q scraped from etymonline.com:\n\n%s\n\nWrite a short, coherent paragraph (2-4 sentences) summarizing this word's etymology and historical development. Return only the paragraph, no preamble.",
+				word, rawText,
+			))),
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+
+	for _, block := range resp.Content {
+		if tb, ok := block.AsAny().(anthropic.TextBlock); ok {
+			return tb.Text, nil
+		}
+	}
+	return "", fmt.Errorf("no text content in LLM response")
 }
 
 // TODO: implement
