@@ -33,13 +33,12 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	result, err := neo4j.ExecuteQuery(s.ctx, s.driver, `
-		MATCH (n:Word)
-		WHERE n.lang = "English"
-		AND n.term IS NOT NULL AND n.term =~ $word
-		RETURN n
+		MATCH path = (n: Word {term: $word, lang: "English"})-[r:CHILD_OF*]->(m: Word)
+		WHERE n.reltype <> "cognate_of" AND all(innerNode IN nodes(path) WHERE innerNode.reltype <> "cognate_of")
+		RETURN path
 	`,
 		map[string]any{
-			"word": "(?i)" + chi.URLParam(r, "word"),
+			"word": chi.URLParam(r, "word"),
 		}, neo4j.EagerResultTransformer,
 		neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
