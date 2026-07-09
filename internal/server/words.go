@@ -148,11 +148,12 @@ func formatWordHistory(ctx context.Context, word, rawText string) (string, error
 	client := anthropic.NewClient()
 
 	resp, err := client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     anthropic.ModelClaudeOpus4_8,
-		MaxTokens: 512,
+		Model:       anthropic.ModelClaudeHaiku4_5,
+		MaxTokens:   256,
+		Temperature: anthropic.Float(0.0),
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(fmt.Sprintf(
-				"Here is raw etymological data for the word %q scraped from etymonline.com:\n\n%s\n\nWrite a short, coherent paragraph (2-4 sentences) summarizing this word's etymology and historical development. Return only the paragraph, no preamble.",
+				"Here is raw etymological data for the word %q scraped from etymonline.com:\n\n%s\n\nSummarize this word's etymology and historical development in one or two complete sentences. Respond with plain prose only: no markdown, headers, titles, preamble, or bullet points. Most importantly, BE CONCISE.",
 				word, rawText,
 			))),
 		},
