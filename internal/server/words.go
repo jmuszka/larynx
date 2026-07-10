@@ -32,6 +32,7 @@ func (s *Server) wordsRouter() http.Handler {
 func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	/* Get graph pathways */
 	result, err := neo4j.ExecuteQuery(s.ctx, s.driver, `
 		MATCH path = (n: Word {term: $word, lang: "English"})-[r:CHILD_OF*]->(m: Word)
 		WHERE n.reltype <> "cognate_of" AND all(innerNode IN nodes(path) WHERE innerNode.reltype <> "cognate_of")
@@ -46,11 +47,67 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	}
 
 	records := make([]map[string]any, len(result.Records))
+	var family []string
+
 	for i, record := range result.Records {
 		records[i] = record.AsMap()
+
+		path := record.AsMap()["path"].(neo4j.Path)
+
+		for _, node := range path.Nodes {
+			lang := node.Props["lang"].(string)
+
+			if lang != "English" && lang != "Middle English" {
+				family = append(family, lang)
+			}
+		}
 	}
 
-	json.NewEncoder(w).Encode(records)
+	/* Get flat geojson polygons */
+	var clauses []string
+	params := make(map[string]interface{})
+
+	for i, prefix := range family {
+		paramName := fmt.Sprintf("prefix%d", i)
+		clauses = append(clauses, fmt.Sprintf("l.name STARTS WITH $%s", paramName))
+		params[paramName] = prefix
+	}
+
+	whereClause := strings.Join(clauses, " OR ")
+	cypher := fmt.Sprintf(`
+			MATCH (l:Language)
+			WHERE %s
+			RETURN l.name AS name, l.json AS json
+		`, whereClause)
+
+	result, err = neo4j.ExecuteQuery(
+		s.ctx,
+		s.driver,
+		cypher,
+		params,
+		neo4j.EagerResultTransformer,           // Safely packs records into memory
+		neo4j.ExecuteQueryWithReadersRouting(), // Routes optimization for read-only query
+	)
+	if err != nil {
+		fmt.Printf("failed to execute query: %w", err)
+		return
+	}
+
+	var results []string
+	for _, record := range result.Records {
+		geojson, _ := record.Get("json")
+		geojsonStr, _ := geojson.(string)
+
+		results = append(results, geojsonStr)
+	}
+
+	response := map[string]any{
+		"graph":   records,
+		"family":  family,
+		"geojson": results,
+	}
+
+	json.NewEncoder(w).Encode(response)
 }
 
 func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {

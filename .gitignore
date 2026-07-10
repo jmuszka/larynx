@@ -12,3 +12,4 @@ data/
 *.sqlite
 *.txt
 *.db
+*.geojson
