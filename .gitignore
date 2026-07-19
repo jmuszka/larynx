@@ -13,3 +13,4 @@ data/
 *.txt
 *.db
 *.geojson
+*.dump
