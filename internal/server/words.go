@@ -42,7 +42,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	/* Get graph pathways */
 	result, err := neo4j.ExecuteQuery(s.ctx, s.driver, `
 		MATCH path = (n: Word {term: $word, lang: "English"})-[r:CHILD_OF*]->(m: Word)
-		WHERE n.reltype <> "cognate_of" AND all(innerNode IN nodes(path) WHERE innerNode.reltype <> "cognate_of")
+		WHERE n.reltype <> "cognate_of" AND all(innerNode IN nodes(path) WHERE innerNode.reltype IS NULL OR innerNode.reltype <> "cognate_of")
 		RETURN path
 	`,
 		map[string]any{
