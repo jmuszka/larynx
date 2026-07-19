@@ -13,3 +13,8 @@ services:
       - NEO4J_dbms_security_procedures_allowlist=apoc.*
     volumes:
       - /path/to/your/data:/data
+  redis:
+    image: "redislabs/redismod"
+    container_name: redis
+    ports:
+      - "6379:6379"

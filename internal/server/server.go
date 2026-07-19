@@ -9,7 +9,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/jmuszka/larynx/internal/cache"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
+	"github.com/redis/go-redis/v9"
 	_ "modernc.org/sqlite"
 )
 
@@ -26,6 +28,7 @@ type Server struct {
 	*http.Server
 	driver  neo4j.DriverWithContext
 	db      *sql.DB
+	cache   *cache.Cache
 	ctx     context.Context
 	version string
 }
@@ -67,8 +70,17 @@ func New(cfg Config) *Server {
 	}
 	fmt.Println("SQLite connection established.")
 
+	// Connect to caching layer
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+	})
+	cache := cache.New(rdb)
+	fmt.Println("Redis connection established.")
+
 	// Create server
-	s := &Server{driver: driver, db: db, ctx: ctx, version: cfg.Version}
+	s := &Server{driver: driver, db: db, ctx: ctx, version: cfg.Version, cache: cache}
 
 	// Routing
 	r := chi.NewRouter()

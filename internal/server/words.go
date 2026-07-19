@@ -32,6 +32,13 @@ func (s *Server) wordsRouter() http.Handler {
 func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Check if response exists in cache
+	val, err := s.cache.Get(r.Context(), r.RequestURI)
+	if err == nil {
+		w.Write([]byte(val))
+		return
+	}
+
 	/* Get graph pathways */
 	result, err := neo4j.ExecuteQuery(s.ctx, s.driver, `
 		MATCH path = (n: Word {term: $word, lang: "English"})-[r:CHILD_OF*]->(m: Word)
@@ -107,11 +114,21 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		"geojson": results,
 	}
 
-	json.NewEncoder(w).Encode(response)
+	// Write to cache so that future queries are quick
+	encoded, _ := json.Marshal(response)
+	w.Write(encoded)
+	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
 
 func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	// Check if response exists in cache
+	val, err := s.cache.Get(r.Context(), r.RequestURI)
+	if err == nil {
+		w.Write([]byte(val))
+		return
+	}
 
 	word := chi.URLParam(r, "word")
 
@@ -195,10 +212,15 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
+	response := map[string]any{
 		"word":    word,
 		"history": history,
-	})
+	}
+
+	// Write to cache so that future queries are quick
+	encoded, _ := json.Marshal(response)
+	w.Write(encoded)
+	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
 
 func formatWordHistory(ctx context.Context, word, rawText string) (string, error) {
@@ -275,12 +297,19 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Check if response exists in cache
+	val, err := s.cache.Get(r.Context(), r.RequestURI)
+	if err == nil {
+		w.Write([]byte(val))
+		return
+	}
+
 	word := chi.URLParam(r, "word")
 
 	var ipa string
 
 	// Retrieve blogpost
-	err := s.db.QueryRow(
+	err = s.db.QueryRow(
 		"SELECT ipa FROM ipa WHERE word LIKE ?",
 		word,
 	).Scan(&ipa)
@@ -290,7 +319,12 @@ func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{
+	response := map[string]string{
 		"ipa": ipa,
-	})
+	}
+
+	// Write to cache so that future queries are quick
+	encoded, _ := json.Marshal(response)
+	w.Write(encoded)
+	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
