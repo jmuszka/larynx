@@ -4,12 +4,5 @@ set -e
 echo "Running go vet..."
 go vet ./...
 
-# echo "Running gofmt..."
-# fmt=$(gofmt -l .)
-# if [ -n "$fmt" ]; then
-#   echo "The following files are not formatted:"
-#   echo "$fmt"
-#   echo ""
-#   echo "Run 'gofmt -w .' to fix."
-#   exit 1
-# fi
+echo "Running gofmt..."
+gofmt -w .
