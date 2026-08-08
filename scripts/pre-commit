@@ -6,3 +6,6 @@ go vet ./...
 
 echo "Running gofmt..."
 gofmt -w .
+
+echo "Committing changes..."
+git add .
