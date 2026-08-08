@@ -26,6 +26,9 @@ func main() {
 		Neo4jPassword: os.Getenv("NEO4J_PASSWORD"),
 		Version:       version,
 		SqlitePath:    os.Getenv("SQLITE_PATH"),
+		AIBaseURL:     os.Getenv("AI_BASE_URL"),
+		AIKey:         os.Getenv("AI_API_KEY"),
+		AIModel:       os.Getenv("AI_MODEL"),
 	}
 
 	s := server.New(cfg)
