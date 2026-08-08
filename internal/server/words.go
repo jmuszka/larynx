@@ -51,7 +51,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	}
 
 	records := make([]map[string]any, len(result.Records))
-	var family []string
+	familySet := map[string]struct{}{}
 
 	for i, record := range result.Records {
 		records[i] = record.AsMap()
@@ -62,27 +62,37 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 			lang := node.Props["lang"].(string)
 
 			if lang != "English" && lang != "Middle English" {
-				family = append(family, lang)
+				familySet[lang] = struct{}{}
 			}
 		}
 	}
 
-	/* Get flat geojson polygons */
-	var clauses []string
-	params := make(map[string]interface{})
-
-	for i, prefix := range family {
-		paramName := fmt.Sprintf("prefix%d", i)
-		clauses = append(clauses, fmt.Sprintf("l.name STARTS WITH $%s", paramName))
-		params[paramName] = prefix
+	family := make([]string, 0, len(familySet))
+	for lang := range familySet {
+		family = append(family, lang)
 	}
 
-	whereClause := strings.Join(clauses, " OR ")
-	cypher := fmt.Sprintf(`
-			MATCH (l:Language)
-			WHERE %s
-			RETURN l.name AS name, l.json AS json
-		`, whereClause)
+	/* Get flat geojson polygons */
+	var params map[string]any
+	cypher := `MATCH (l:Language) WHERE ANY(prefix IN $prefixes WHERE l.name CONTAINS prefix) RETURN l.name AS name, l.json AS json`
+	params = map[string]any{"prefixes": family}
+
+	debug := cypher
+	for k, v := range params {
+		var val string
+		switch tv := v.(type) {
+		case []string:
+			var quoted []string
+			for _, s := range tv {
+				quoted = append(quoted, fmt.Sprintf("%q", s))
+			}
+			val = "[" + strings.Join(quoted, ", ") + "]"
+		default:
+			val = fmt.Sprintf("%q", v)
+		}
+		debug = strings.ReplaceAll(debug, "$"+k, val)
+	}
+	log.Println(debug)
 
 	result, err = neo4j.ExecuteQuery(
 		s.ctx,
