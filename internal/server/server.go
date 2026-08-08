@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/jmuszka/larynx/internal/ai"
 	"github.com/jmuszka/larynx/internal/cache"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
 	"github.com/redis/go-redis/v9"
@@ -22,15 +24,20 @@ type Config struct {
 	Neo4jPassword string
 	SqlitePath    string
 	Version       string
+	AIBaseURL     string
+	AIKey         string
+	AIModel       string
 }
 
 type Server struct {
 	*http.Server
-	driver  neo4j.DriverWithContext
-	db      *sql.DB
-	cache   *cache.Cache
-	ctx     context.Context
-	version string
+	driver     neo4j.DriverWithContext
+	db         *sql.DB
+	cache      *cache.Cache
+	ai         *ai.Service
+	httpClient *http.Client
+	ctx        context.Context
+	version    string
 }
 
 func New(cfg Config) *Server {
@@ -79,8 +86,21 @@ func New(cfg Config) *Server {
 	cache := cache.New(rdb)
 	fmt.Println("Redis connection established.")
 
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+
+	aiService, err := ai.New(ai.Config{
+		APIKey:     cfg.AIKey,
+		BaseURL:    cfg.AIBaseURL,
+		Model:      cfg.AIModel,
+		HTTPClient: httpClient,
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("AI service initialized.")
+
 	// Create server
-	s := &Server{driver: driver, db: db, ctx: ctx, version: cfg.Version, cache: cache}
+	s := &Server{driver: driver, db: db, ctx: ctx, version: cfg.Version, cache: cache, ai: aiService, httpClient: httpClient}
 
 	// Routing
 	r := chi.NewRouter()

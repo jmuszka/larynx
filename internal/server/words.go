@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,10 +8,8 @@ import (
 	neturl "net/url"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/go-chi/chi/v5"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
 )
@@ -142,8 +139,7 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		log.Printf("Failed to fetch etymology page: %v", err)
 		w.WriteHeader(http.StatusBadGateway)
@@ -169,6 +165,7 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 
 	var entries []Entry
 	whitespace := regexp.MustCompile(`\s{2,}`)
+	adNoise := regexp.MustCompile(`(?i)(ABCDEFGHIJKLMNOPQRSTUVWXYZ|Advertisement|Remove Ads|Want to remove ads\?[^.]*\.|allnamephraserootword parts|\d+ entries found\.|Related entries & more|Trending[^.]*\.)`)
 
 	// etymonline uses CSS modules — class names follow the pattern "word--*"
 	doc.Find("[class*='word--']").Each(func(_ int, sel *goquery.Selection) {
@@ -181,6 +178,8 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 			text = strings.TrimSpace(sel.Find("p").Text())
 		}
 		text = whitespace.ReplaceAllString(text, " ")
+		text = adNoise.ReplaceAllString(text, "")
+		text = strings.TrimSpace(text)
 		if name != "" && text != "" {
 			entries = append(entries, Entry{Word: name, Text: text})
 		}
@@ -193,19 +192,32 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 			raw = doc.Find("body").Text()
 		}
 		raw = whitespace.ReplaceAllString(strings.TrimSpace(raw), "\n")
+		raw = adNoise.ReplaceAllString(raw, "")
+		raw = strings.TrimSpace(raw)
 		entries = append(entries, Entry{Word: word, Text: raw})
 	}
 
-	// Build a single text blob from all scraped entries to pass to the LLM
+	// Build a single text blob from entries matching the search word
 	var raw strings.Builder
 	for _, e := range entries {
+		if !entryMatchesWord(e.Word, word) {
+			continue
+		}
 		if e.Word != "" {
 			raw.WriteString(e.Word + ": ")
 		}
 		raw.WriteString(e.Text + "\n\n")
 	}
+	if raw.Len() == 0 && len(entries) > 0 {
+		e := entries[0]
+		raw.WriteString(e.Word + ": ")
+		raw.WriteString(e.Text + "\n\n")
+	}
 
-	history, err := formatWordHistory(r.Context(), word, raw.String())
+	history, err := s.ai.Prompt(r.Context(), fmt.Sprintf(
+		"%s\n\nWrite one sentence about the origin and history of %q.",
+		raw.String(), word,
+	))
 	if err != nil {
 		log.Printf("LLM formatting failed: %v", err)
 		json.NewEncoder(w).Encode(map[string]any{"word": word, "results": entries})
@@ -223,30 +235,10 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
 
-func formatWordHistory(ctx context.Context, word, rawText string) (string, error) {
-	client := anthropic.NewClient()
-
-	resp, err := client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:       anthropic.ModelClaudeHaiku4_5,
-		MaxTokens:   256,
-		Temperature: anthropic.Float(0.0),
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(fmt.Sprintf(
-				"Here is raw etymological data for the word %q scraped from etymonline.com:\n\n%s\n\nSummarize this word's etymology and historical development in one or two complete sentences. Respond with plain prose only: no markdown, headers, titles, preamble, or bullet points. Most importantly, BE CONCISE.",
-				word, rawText,
-			))),
-		},
-	})
-	if err != nil {
-		return "", err
-	}
-
-	for _, block := range resp.Content {
-		if tb, ok := block.AsAny().(anthropic.TextBlock); ok {
-			return tb.Text, nil
-		}
-	}
-	return "", fmt.Errorf("no text content in LLM response")
+func entryMatchesWord(entryWord, searchWord string) bool {
+	clean := strings.TrimSpace(strings.SplitN(entryWord, "(", 2)[0])
+	clean = strings.TrimRight(clean, " ")
+	return strings.EqualFold(clean, searchWord)
 }
 
 // TODO: implement
