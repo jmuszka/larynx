@@ -96,7 +96,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		neo4j.ExecuteQueryWithReadersRouting(), // Routes optimization for read-only query
 	)
 	if err != nil {
-		fmt.Printf("failed to execute query: %w", err)
+		fmt.Printf("failed to execute query: %v", err)
 		return
 	}
 
