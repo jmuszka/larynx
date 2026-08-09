@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -23,15 +24,26 @@ func (c *Cache) Get(ctx context.Context, key string) (string, error) {
 	if errors.Is(err, redis.Nil) {
 		return "", ErrNotFound
 	}
+	if err != nil {
+		slog.Error("cache get failed", "key", key, "error", err)
+	}
 	return val, err
 }
 
 func (c *Cache) Set(ctx context.Context, key, value string, ttl time.Duration) error {
-	return c.client.Set(ctx, key, value, ttl).Err()
+	err := c.client.Set(ctx, key, value, ttl).Err()
+	if err != nil {
+		slog.Error("cache set failed", "key", key, "error", err)
+	}
+	return err
 }
 
 func (c *Cache) Delete(ctx context.Context, key string) error {
-	return c.client.Del(ctx, key).Err()
+	err := c.client.Del(ctx, key).Err()
+	if err != nil {
+		slog.Error("cache delete failed", "key", key, "error", err)
+	}
+	return err
 }
 
 func (c *Cache) Close() error {

@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/jmuszka/larynx/internal/ai"
 	"github.com/jmuszka/larynx/internal/cache"
+	"github.com/jmuszka/larynx/internal/logging"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
 	"github.com/redis/go-redis/v9"
 	_ "modernc.org/sqlite"
@@ -27,10 +27,12 @@ type Config struct {
 	AIBaseURL     string
 	AIKey         string
 	AIModel       string
+	Logger        *logging.Service
 }
 
 type Server struct {
 	*http.Server
+	logger     *logging.Service
 	driver     neo4j.DriverWithContext
 	db         *sql.DB
 	cache      *cache.Cache
@@ -47,20 +49,19 @@ func New(cfg Config) *Server {
 		cfg.Neo4jUri,
 		neo4j.BasicAuth(cfg.Neo4jUser, cfg.Neo4jPassword, ""))
 	if err != nil {
-		panic(err)
+		cfg.Logger.Fatal("failed to create neo4j driver", "error", err)
 	}
 	if err = driver.VerifyConnectivity(ctx); err != nil {
-		panic(err)
+		cfg.Logger.Fatal("failed to verify neo4j connectivity", "error", err)
 	}
-	fmt.Println("Neo4j connection established.")
+	cfg.Logger.Info("neo4j connection established")
 
-	// Connect to SQLite database
 	db, err := sql.Open("sqlite", cfg.SqlitePath)
 	if err != nil {
-		panic(err)
+		cfg.Logger.Fatal("failed to open sqlite database", "error", err)
 	}
 	if err = db.PingContext(ctx); err != nil {
-		panic(err)
+		cfg.Logger.Fatal("failed to ping sqlite database", "error", err)
 	}
 	if _, err = db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS articles (
@@ -73,18 +74,17 @@ func New(cfg Config) *Server {
 			modified    DATETIME DEFAULT CURRENT_TIMESTAMP
 		)
 	`); err != nil {
-		panic(err)
+		cfg.Logger.Fatal("failed to create articles table", "error", err)
 	}
-	fmt.Println("SQLite connection established.")
+	cfg.Logger.Info("sqlite connection established")
 
-	// Connect to caching layer
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379",
 		Password: "",
 		DB:       0,
 	})
 	cache := cache.New(rdb)
-	fmt.Println("Redis connection established.")
+	cfg.Logger.Info("redis connection established")
 
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 
@@ -95,12 +95,11 @@ func New(cfg Config) *Server {
 		HTTPClient: httpClient,
 	})
 	if err != nil {
-		panic(err)
+		cfg.Logger.Fatal("failed to initialize ai service", "error", err)
 	}
-	fmt.Println("AI service initialized.")
+	cfg.Logger.Info("ai service initialized")
 
-	// Create server
-	s := &Server{driver: driver, db: db, ctx: ctx, version: cfg.Version, cache: cache, ai: aiService, httpClient: httpClient}
+	s := &Server{logger: cfg.Logger, driver: driver, db: db, ctx: ctx, version: cfg.Version, cache: cache, ai: aiService, httpClient: httpClient}
 
 	// Routing
 	r := chi.NewRouter()
