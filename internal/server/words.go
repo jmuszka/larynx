@@ -29,6 +29,12 @@ func (s *Server) wordsRouter() http.Handler {
 func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// English is the default language
+	lang := r.URL.Query().Get("lang")
+	if lang == "" {
+		lang = "English"
+	}
+
 	// Check if response exists in cache
 	val, err := s.cache.Get(r.Context(), r.RequestURI)
 	if err == nil {
@@ -38,12 +44,13 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 
 	/* Get graph pathways */
 	result, err := neo4j.ExecuteQuery(s.ctx, s.driver, `
-		MATCH path = (n: Word {term: $word, lang: "English"})-[r:CHILD_OF*]->(m: Word)
+		MATCH path = (n: Word {term: $word, lang: $lang})-[r:CHILD_OF*]->(m: Word)
 		WHERE n.reltype <> "cognate_of" AND all(innerNode IN nodes(path) WHERE innerNode.reltype IS NULL OR innerNode.reltype <> "cognate_of")
 		RETURN path
 	`,
 		map[string]any{
-			"word": chi.URLParam(r, "word"),
+			"word": unescapeParam(r, "word"),
+			"lang": lang,
 		}, neo4j.EagerResultTransformer,
 		neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
@@ -76,23 +83,6 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	var params map[string]any
 	cypher := `MATCH (l:Language) WHERE ANY(prefix IN $prefixes WHERE l.name CONTAINS prefix) RETURN l.name AS name, l.json AS json`
 	params = map[string]any{"prefixes": family}
-
-	debug := cypher
-	for k, v := range params {
-		var val string
-		switch tv := v.(type) {
-		case []string:
-			var quoted []string
-			for _, s := range tv {
-				quoted = append(quoted, fmt.Sprintf("%q", s))
-			}
-			val = "[" + strings.Join(quoted, ", ") + "]"
-		default:
-			val = fmt.Sprintf("%q", v)
-		}
-		debug = strings.ReplaceAll(debug, "$"+k, val)
-	}
-	log.Println(debug)
 
 	result, err = neo4j.ExecuteQuery(
 		s.ctx,
@@ -130,6 +120,13 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	lang := r.URL.Query().Get("lang")
+	if lang != "" && lang != "English" {
+		s.logger.Warn("history not implemented for non-english")
+		json.NewEncoder(w).Encode(map[string]string{"error": "history not implemented for non-english"})
+		return
+	}
+
 	// Check if response exists in cache
 	val, err := s.cache.Get(r.Context(), r.RequestURI)
 	if err == nil {
@@ -138,6 +135,9 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	word := chi.URLParam(r, "word")
+	if decoded, err := neturl.PathUnescape(word); err == nil {
+		word = decoded
+	}
 
 	req, err := http.NewRequest("GET", "https://www.etymonline.com/search?q="+neturl.QueryEscape(word), nil)
 	if err != nil {
@@ -296,8 +296,23 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(terms)
 }
 
+func unescapeParam(r *http.Request, param string) string {
+	word := chi.URLParam(r, param)
+	if decoded, err := neturl.PathUnescape(word); err == nil {
+		return decoded
+	}
+	return word
+}
+
 func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	lang := r.URL.Query().Get("lang")
+	if lang != "" && lang != "English" {
+		s.logger.Warn("ipa not implemented for non-english")
+		json.NewEncoder(w).Encode(map[string]string{"error": "ipa not implemented for non-english"})
+		return
+	}
 
 	// Check if response exists in cache
 	val, err := s.cache.Get(r.Context(), r.RequestURI)
@@ -305,8 +320,12 @@ func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(val))
 		return
 	}
+	s.logger.Error("cache lookup failed", "error", err)
 
 	word := chi.URLParam(r, "word")
+	if decoded, err := neturl.PathUnescape(word); err == nil {
+		word = decoded
+	}
 
 	var ipa string
 
