@@ -78,10 +78,11 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	for lang := range familySet {
 		family = append(family, lang)
 	}
+	family = append(family, "English")
 
 	/* Get flat geojson polygons */
 	var params map[string]any
-	cypher := `MATCH (l:Language) WHERE ANY(prefix IN $prefixes WHERE l.name CONTAINS prefix) RETURN l.name AS name, l.json AS json`
+	cypher := `MATCH (l:Language) WHERE ANY(prefix IN $prefixes WHERE l.name CONTAINS prefix) RETURN l.name AS name, l.geometryJSON AS json`
 	params = map[string]any{"prefixes": family}
 
 	result, err = neo4j.ExecuteQuery(
@@ -97,18 +98,35 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var results []string
+	features := make([]any, 0, len(result.Records))
 	for _, record := range result.Records {
-		geojson, _ := record.Get("json")
-		geojsonStr, _ := geojson.(string)
+		name, _ := record.Get("name")
+		nameStr, _ := name.(string)
 
-		results = append(results, geojsonStr)
+		geometryJSON, _ := record.Get("json")
+		geometryStr, _ := geometryJSON.(string)
+
+		var geometry any
+		if err := json.Unmarshal([]byte(geometryStr), &geometry); err != nil {
+			continue
+		}
+
+		features = append(features, map[string]any{
+			"type": "Feature",
+			"properties": map[string]any{
+				"name": nameStr,
+			},
+			"geometry": geometry,
+		})
 	}
 
 	response := map[string]any{
-		"graph":   records,
-		"family":  family,
-		"geojson": results,
+		"graph":  records,
+		"family": family,
+		"geojson": map[string]any{
+			"type":     "FeatureCollection",
+			"features": features,
+		},
 	}
 
 	// Write to cache so that future queries are quick
