@@ -59,6 +59,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 
 	records := make([]map[string]any, len(result.Records))
 	familySet := map[string]struct{}{}
+	family := make([]string, 0, len(familySet))
 
 	for i, record := range result.Records {
 		records[i] = record.AsMap()
@@ -70,15 +71,63 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 
 			if lang != "English" && lang != "Middle English" {
 				familySet[lang] = struct{}{}
+				family = append(family, lang)
 			}
 		}
 	}
 
-	family := make([]string, 0, len(familySet))
-	for lang := range familySet {
-		family = append(family, lang)
-	}
 	family = append(family, "English")
+
+	// Get families
+	result, err = neo4j.ExecuteQuery(s.ctx, s.driver, `
+		UNWIND $langs AS langName
+		MATCH (l:Language)
+		WHERE l.name STARTS WITH langName
+		WITH collect(DISTINCT l.glottocode) AS codes
+
+
+		UNWIND codes AS code
+		MATCH (n:Family)
+		WHERE n.name CONTAINS '[' + code + ']'
+		WITH collect(DISTINCT n) AS targets
+		
+		UNWIND range(0, size(targets) - 2) AS i
+		UNWIND range(i + 1, size(targets) - 1) AS j
+		WITH targets[i] AS a, targets[j] AS b
+		
+		MATCH path1 = (lca:Family)-[:PARENT_OF*0..]->(a)
+		MATCH path2 = (lca)-[:PARENT_OF*0..]->(b)
+		WITH a, b, lca, length(path1) + length(path2) AS totalDistance
+		ORDER BY a.name, b.name, totalDistance ASC
+		WITH a, b, collect(lca)[0] AS lca
+		
+		OPTIONAL MATCH (lca)-[:PARENT_OF]->(branchA)
+		WHERE (branchA)-[:PARENT_OF*0..]->(a)
+		
+		OPTIONAL MATCH (lca)-[:PARENT_OF]->(branchB)
+		WHERE (branchB)-[:PARENT_OF*0..]->(b)
+		
+		
+		WITH collect(branchA) + collect(branchB) AS allBranches
+		UNWIND allBranches AS branch
+		WITH DISTINCT branch
+		WHERE branch IS NOT NULL
+		RETURN collect(branch.name) AS branches
+	`,
+		map[string]any{
+			"langs": family,
+		}, neo4j.EagerResultTransformer,
+		neo4j.ExecuteQueryWithDatabase("neo4j"))
+	if err != nil {
+		panic(err)
+	}
+
+	rawList, _ := result.Records[0].Get("branches")
+	branches := make([]string, 0, len(rawList.([]interface{})))
+	for _, v := range rawList.([]interface{}) {
+		branches = append(branches, v.(string))
+	}
+	fmt.Println(branches)
 
 	/* Get flat geojson polygons */
 	var params map[string]any
@@ -122,7 +171,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 
 	response := map[string]any{
 		"graph":  records,
-		"family": family,
+		"family": branches,
 		"geojson": map[string]any{
 			"type":     "FeatureCollection",
 			"features": features,
