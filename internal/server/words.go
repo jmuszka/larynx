@@ -97,16 +97,20 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		
 		MATCH path1 = (lca:Family)-[:PARENT_OF*0..]->(a)
 		MATCH path2 = (lca)-[:PARENT_OF*0..]->(b)
+		WHERE coalesce(lca.ignore, false) = false
 		WITH a, b, lca, length(path1) + length(path2) AS totalDistance
 		ORDER BY a.name, b.name, totalDistance ASC
 		WITH a, b, collect(lca)[0] AS lca
 		
-		OPTIONAL MATCH (lca)-[:PARENT_OF]->(branchA)
-		WHERE (branchA)-[:PARENT_OF*0..]->(a)
+		MATCH pathA = (lca)-[:PARENT_OF*0..]->(a)
+		WITH a, b, lca, [x IN nodes(pathA) WHERE x <> lca] AS descA
+		WITH a, b, lca, [x IN descA WHERE coalesce(x.ignore, false) = false][0] AS foundBranchA
+
+		MATCH pathB = (lca)-[:PARENT_OF*0..]->(b)
+		WITH a, b, lca, foundBranchA, [x IN nodes(pathB) WHERE x <> lca] AS descB
+		WITH a, b, lca, foundBranchA, [x IN descB WHERE coalesce(x.ignore, false) = false][0] AS foundBranchB
 		
-		OPTIONAL MATCH (lca)-[:PARENT_OF]->(branchB)
-		WHERE (branchB)-[:PARENT_OF*0..]->(b)
-		
+		WITH coalesce(foundBranchA, lca) AS branchA, coalesce(foundBranchB, lca) AS branchB
 		
 		WITH collect(branchA) + collect(branchB) AS allBranches
 		UNWIND allBranches AS branch
