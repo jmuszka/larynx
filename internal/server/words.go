@@ -82,7 +82,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	result, err = neo4j.ExecuteQuery(s.ctx, s.driver, `
 		UNWIND $langs AS langName
 		MATCH (l:Language)
-		WHERE l.name STARTS WITH langName
+		WHERE l.name CONTAINS langName
 		WITH collect(DISTINCT l.glottocode) AS codes
 
 
