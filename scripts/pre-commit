@@ -8,4 +8,4 @@ echo "Running gofmt..."
 gofmt -w .
 
 echo "Committing changes..."
-git add .
+git add $(git diff --name-only --cached)

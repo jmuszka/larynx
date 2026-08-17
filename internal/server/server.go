@@ -18,16 +18,18 @@ import (
 )
 
 type Config struct {
-	Addr          string
-	Neo4jUri      string
-	Neo4jUser     string
-	Neo4jPassword string
-	SqlitePath    string
-	Version       string
-	AIBaseURL     string
-	AIKey         string
-	AIModel       string
-	Logger        *logging.Service
+	Addr           string
+	Neo4jUri       string
+	Neo4jUser      string
+	Neo4jPassword  string
+	SqlitePath     string
+	Version        string
+	AIBaseURL      string
+	AIKey          string
+	AIModel        string
+	Logger         *logging.Service
+	AllowedOrigins []string
+	DebugMode      bool
 }
 
 type Server struct {
@@ -105,7 +107,19 @@ func New(cfg Config) *Server {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(cors.AllowAll().Handler)
+
+	// CORS
+	if cfg.DebugMode {
+		r.Use(cors.AllowAll().Handler)
+	} else {
+		r.Use(cors.Handler(cors.Options{
+			AllowedOrigins:   cfg.AllowedOrigins,
+			AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE"},
+			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+			AllowCredentials: false,
+			MaxAge:           300,
+		}))
+	}
 
 	r.Mount("/api/v1", s.apiRouter())
 

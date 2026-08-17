@@ -2,11 +2,23 @@ package main
 
 import (
 	"os"
+	"strings"
 
 	"github.com/jmuszka/larynx/internal/logging"
 	"github.com/jmuszka/larynx/internal/server"
 	"github.com/joho/godotenv"
 )
+
+func splitOrigins(raw string) []string {
+	parts := strings.Split(raw, ",")
+	origins := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			origins = append(origins, p)
+		}
+	}
+	return origins
+}
 
 func Loadenv() {
 	if err := godotenv.Load(); err != nil {
@@ -26,16 +38,18 @@ func main() {
 	defer logger.Close()
 
 	cfg := server.Config{
-		Addr:          ":" + os.Getenv("PORT"),
-		Neo4jUri:      os.Getenv("NEO4J_URI"),
-		Neo4jUser:     os.Getenv("NEO4J_USER"),
-		Neo4jPassword: os.Getenv("NEO4J_PASSWORD"),
-		Version:       version,
-		SqlitePath:    os.Getenv("SQLITE_PATH"),
-		AIBaseURL:     os.Getenv("AI_BASE_URL"),
-		AIKey:         os.Getenv("AI_API_KEY"),
-		AIModel:       os.Getenv("AI_MODEL"),
-		Logger:        logger,
+		Addr:           ":" + os.Getenv("PORT"),
+		Neo4jUri:       os.Getenv("NEO4J_URI"),
+		Neo4jUser:      os.Getenv("NEO4J_USER"),
+		Neo4jPassword:  os.Getenv("NEO4J_PASSWORD"),
+		Version:        version,
+		SqlitePath:     os.Getenv("SQLITE_PATH"),
+		AIBaseURL:      os.Getenv("AI_BASE_URL"),
+		AIKey:          os.Getenv("AI_API_KEY"),
+		AIModel:        os.Getenv("AI_MODEL"),
+		Logger:         logger,
+		AllowedOrigins: splitOrigins(os.Getenv("ALLOWED_ORIGINS")),
+		DebugMode:      strings.ToLower(os.Getenv("DEBUG")) == "true",
 	}
 
 	s := server.New(cfg)
