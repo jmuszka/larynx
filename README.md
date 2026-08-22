@@ -65,6 +65,53 @@ All endpoints are mounted under `/api/v1`.
 | `PATCH` | `/blog/articles/{slug}` | Update an article |
 | `DELETE` | `/blog/articles/{slug}` | Delete an article |
 
+## Authentication
+
+There are two independent auth layers:
+
+1. **Client bearer token** — required on **every** endpoint via the standard `Authorization` header.
+2. **Admin JWT** — required *in addition to* the bearer token on blog **write** endpoints (create/update/delete), sent in the `X-Admin-JWT` header.
+
+| Endpoint | Client bearer | Admin JWT |
+|----------|:-------------:|:---------:|
+| All `/health`, `/words`, `/games` endpoints | ✅ | — |
+| `GET /blog/articles` and `GET /blog/articles/{slug}` | ✅ | — |
+| `POST /blog/articles/create` | ✅ | ✅ |
+| `PATCH /blog/articles/{slug}` | ✅ | ✅ |
+| `DELETE /blog/articles/{slug}` | ✅ | ✅ |
+
+### Client bearer token
+
+Set `BEARER_TOKENS` in `.env` to a comma-separated list of approved tokens. Each request must include one of them:
+
+```bash
+curl -H "Authorization: Bearer <client-token>" http://localhost:8080/api/v1/blog/articles
+```
+
+### Admin JWT (blog writes)
+
+Blog creation, editing, and deletion require a signed JWT in the `X-Admin-JWT` header. There is no login/token-issuing endpoint — the token is minted offline and used only by the site owner.
+
+1. Set a strong secret in `.env`:
+   ```
+   ADMIN_JWT_SECRET=<random-secret>
+   ADMIN_JWT_SUBJECT=blog-admin   # optional, defaults to blog-admin
+   ```
+2. Generate a token (the script reads `.env`, so the secret always matches the server):
+   ```bash
+   go run ./scripts/gen-admin-jwt
+   ```
+3. Send it alongside the client bearer token on write requests:
+   ```bash
+   curl -X POST http://localhost:8080/api/v1/blog/articles/create \
+     -H "Authorization: Bearer <client-token>" \
+     -H "X-Admin-JWT: <generated-token>" \
+     -H "Content-Type: application/json" \
+     -d '{"title":"Hello","description":"test","content":"body"}'
+   ```
+
+The token is an HS256 JWT signed with `ADMIN_JWT_SECRET`, carrying `sub` (the `ADMIN_JWT_SUBJECT`), `iat`, and `exp` claims. It is validated for signature, algorithm (`HS256`), expiry, and subject. A token's lifetime is set in `scripts/gen-admin-jwt/main.go` (defaults to one hour) — regenerate it when it expires.
+
 ## Swagger
 
 API documentation is generated with [swaggo/swag](https://github.com/swaggo/swag) and served by Swagger UI. When debug mode is enabled (`DEBUG=true` in `.env`), the interactive docs are available at:
@@ -135,6 +182,9 @@ The server listens on the port specified in `.env` (default: `8080`).
 | `AI_API_KEY` | — | OpenAI-compatible API key |
 | `AI_BASE_URL` | — | LLM API base URL |
 | `AI_MODEL` | — | LLM model name (e.g. `deepseek-v4-flash`) |
+| `BEARER_TOKENS` | — | Comma-separated list of approved client bearer tokens |
+| `ADMIN_JWT_SECRET` | *(required)* | Secret used to sign/verify blog-write admin JWTs |
+| `ADMIN_JWT_SUBJECT` | `blog-admin` | Expected `sub` claim on the admin JWT |
 
 Relationship subtypes on `CHILD_OF`: `borrowed_from`, `derived_from`, `has_root`, `has_affix`, `cognate_of`.
 
@@ -156,6 +206,7 @@ All word endpoints (etymology, history, IPA) check Redis before executing expens
 │   ├── logging/         # Structured JSON logger (slog)
 │   └── server/          # HTTP server, routing, handlers
 ├── scripts/
-│   └── pre-commit       # Pre-commit lint hook
+│   ├── pre-commit       # Pre-commit lint hook
+│   └── gen-admin-jwt/   # Offline admin JWT generator for blog writes
 └── .github/workflows/   # CI (go vet + gofmt)
 ```
