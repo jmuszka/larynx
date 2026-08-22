@@ -14,9 +14,13 @@ func (s *Server) apiRouter() http.Handler {
 	r.Mount("/words", s.wordsRouter())
 	r.Mount("/games", s.gamesRouter())
 	r.Mount("/blog", s.blogRouter())
-	r.Mount("/docs", httpSwagger.Handler(
-		httpSwagger.URL("/api/v1/docs/doc.json"),
-	))
+
+	// Mount swagger API docs if in development mode
+	if s.cfg.DebugMode {
+		r.Mount("/docs", httpSwagger.Handler(
+			httpSwagger.URL("/api/v1/docs/doc.json"),
+		))
+	}
 
 	return r
 }

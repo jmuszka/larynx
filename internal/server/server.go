@@ -34,6 +34,7 @@ type Config struct {
 
 type Server struct {
 	*http.Server
+	cfg        Config
 	logger     *logging.Service
 	driver     neo4j.DriverWithContext
 	db         *sql.DB
@@ -101,7 +102,7 @@ func New(cfg Config) *Server {
 	}
 	cfg.Logger.Info("ai service initialized")
 
-	s := &Server{logger: cfg.Logger, driver: driver, db: db, version: cfg.Version, cache: cache, ai: aiService, httpClient: httpClient}
+	s := &Server{cfg: cfg, logger: cfg.Logger, driver: driver, db: db, version: cfg.Version, cache: cache, ai: aiService, httpClient: httpClient}
 
 	// Routing
 	r := chi.NewRouter()
