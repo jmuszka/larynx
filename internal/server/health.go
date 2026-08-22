@@ -21,6 +21,14 @@ func (s *Server) healthRouter() http.Handler {
 	return r
 }
 
+// handleHealth godoc
+// @Summary      Health check
+// @Description  Returns the server version and the status of its services.
+// @Tags         health
+// @Produce      json
+// @Success      200  {object}  healthResponse
+// @Failure      503  {object}  healthResponse
+// @Router       /health [get]
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()

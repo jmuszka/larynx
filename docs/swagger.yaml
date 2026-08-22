@@ -1,0 +1,403 @@
+basePath: /api/v1
+definitions:
+  server.article:
+    properties:
+      content:
+        type: string
+      description:
+        type: string
+      modified:
+        type: string
+      published:
+        type: string
+      slug:
+        type: string
+      title:
+        type: string
+    type: object
+  server.articleSummary:
+    properties:
+      description:
+        type: string
+      modified:
+        type: string
+      published:
+        type: string
+      slug:
+        type: string
+      title:
+        type: string
+    type: object
+  server.articlesResponse:
+    properties:
+      articles:
+        items:
+          $ref: '#/definitions/server.articleSummary'
+        type: array
+    type: object
+  server.createArticleRequest:
+    properties:
+      content:
+        type: string
+      description:
+        type: string
+      title:
+        type: string
+    type: object
+  server.etymologyResponse:
+    properties:
+      family:
+        items:
+          type: string
+        type: array
+      geojson:
+        $ref: '#/definitions/server.geoJSON'
+      graph:
+        items:
+          additionalProperties: {}
+          type: object
+        type: array
+    type: object
+  server.feature:
+    properties:
+      geometry:
+        additionalProperties: {}
+        type: object
+      properties:
+        additionalProperties: {}
+        type: object
+      type:
+        example: Feature
+        type: string
+    type: object
+  server.geoJSON:
+    properties:
+      features:
+        items:
+          $ref: '#/definitions/server.feature'
+        type: array
+      type:
+        example: FeatureCollection
+        type: string
+    type: object
+  server.healthResponse:
+    properties:
+      services:
+        additionalProperties:
+          type: string
+        type: object
+      status:
+        type: string
+      version:
+        type: string
+    type: object
+  server.historyResponse:
+    properties:
+      history:
+        type: string
+      word:
+        type: string
+    type: object
+  server.ipaResponse:
+    properties:
+      ipa:
+        type: string
+    type: object
+  server.messageResponse:
+    properties:
+      message:
+        type: string
+    type: object
+  server.updateArticleRequest:
+    properties:
+      content:
+        type: string
+      description:
+        type: string
+      title:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: Larynx word etymology and language API.
+  title: Larynx API
+  version: preview
+paths:
+  /blog/articles:
+    get:
+      description: Returns all articles ordered by most recently modified.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.articlesResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: List articles
+      tags:
+      - blog
+  /blog/articles/{slug}:
+    delete:
+      description: Deletes the article identified by its slug.
+      parameters:
+      - description: Article slug
+        in: path
+        name: slug
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.messageResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Delete an article
+      tags:
+      - blog
+    get:
+      description: Returns a single article identified by its slug.
+      parameters:
+      - description: Article slug
+        in: path
+        name: slug
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.article'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get an article by slug
+      tags:
+      - blog
+    patch:
+      consumes:
+      - application/json
+      description: Updates one or more fields of the article identified by its slug.
+      parameters:
+      - description: Article slug
+        in: path
+        name: slug
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.updateArticleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.messageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Update an article
+      tags:
+      - blog
+  /blog/articles/create:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new article from the provided title, description, and
+        content.
+      parameters:
+      - description: Article to create
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.createArticleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.messageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create an article
+      tags:
+      - blog
+  /health:
+    get:
+      description: Returns the server version and the status of its services.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.healthResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/server.healthResponse'
+      summary: Health check
+      tags:
+      - health
+  /words:
+    get:
+      description: Returns English words whose term starts with the given prefix.
+      parameters:
+      - description: Prefix to search for
+        in: query
+        name: prefix
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Search for words
+      tags:
+      - words
+  /words/{word}/etymology:
+    get:
+      description: Returns the graph of ancestor words, their language families, and
+        a GeoJSON map of where those languages are spoken.
+      parameters:
+      - description: The word to look up
+        in: path
+        name: word
+        required: true
+        type: string
+      - default: English
+        description: Language of the word
+        in: query
+        name: lang
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.etymologyResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get a word's etymology graph
+      tags:
+      - words
+  /words/{word}/history:
+    get:
+      description: Returns a one-sentence summary of a word's origin and history.
+      parameters:
+      - description: The word to look up
+        in: path
+        name: word
+        required: true
+        type: string
+      - default: English
+        description: Language of the word
+        in: query
+        name: lang
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.historyResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get a word's origin and history
+      tags:
+      - words
+  /words/{word}/ipa:
+    get:
+      description: Returns the International Phonetic Alphabet transcription for a
+        word.
+      parameters:
+      - description: The word to look up
+        in: path
+        name: word
+        required: true
+        type: string
+      - default: English
+        description: Language of the word
+        in: query
+        name: lang
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.ipaResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get a word's IPA transcription
+      tags:
+      - words
+swagger: "2.0"
