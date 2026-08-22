@@ -43,7 +43,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	}
 
 	/* Get graph pathways */
-	result, err := neo4j.ExecuteQuery(s.ctx, s.driver, `
+	result, err := neo4j.ExecuteQuery(r.Context(), s.driver, `
 		MATCH path = (n: Word {term: $word, lang: $lang})-[r:CHILD_OF*]->(m: Word)
 		WHERE n.reltype <> "cognate_of" AND all(innerNode IN nodes(path) WHERE innerNode.reltype IS NULL OR innerNode.reltype <> "cognate_of")
 		RETURN path
@@ -79,7 +79,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	family = append(family, "English")
 
 	// Get families
-	result, err = neo4j.ExecuteQuery(s.ctx, s.driver, `
+	result, err = neo4j.ExecuteQuery(r.Context(), s.driver, `
 		UNWIND $langs AS langName
 		MATCH (l:Language)
 		WHERE l.name CONTAINS langName
@@ -139,7 +139,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	params = map[string]any{"prefixes": family}
 
 	result, err = neo4j.ExecuteQuery(
-		s.ctx,
+		r.Context(),
 		s.driver,
 		cypher,
 		params,
@@ -210,7 +210,7 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 		word = decoded
 	}
 
-	req, err := http.NewRequest("GET", "https://www.etymonline.com/search?q="+neturl.QueryEscape(word), nil)
+	req, err := http.NewRequestWithContext(r.Context(), "GET", "https://www.etymonline.com/search?q="+neturl.QueryEscape(word), nil)
 	if err != nil {
 		log.Printf("Failed to build request: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -345,7 +345,7 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 	`
 
 	// Fetch search results from Neo4j
-	result, err := neo4j.ExecuteQuery(s.ctx, s.driver, query,
+	result, err := neo4j.ExecuteQuery(r.Context(), s.driver, query,
 		map[string]any{
 			"prefix": prefix,
 		}, neo4j.EagerResultTransformer,
