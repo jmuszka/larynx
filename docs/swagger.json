@@ -7,5 +7,601 @@
         "version": "preview"
     },
     "basePath": "/api/v1",
-    "paths": {}
+    "paths": {
+        "/blog/articles": {
+            "get": {
+                "description": "Returns all articles ordered by most recently modified.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blog"
+                ],
+                "summary": "List articles",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.articlesResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/blog/articles/create": {
+            "post": {
+                "description": "Creates a new article from the provided title, description, and content.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blog"
+                ],
+                "summary": "Create an article",
+                "parameters": [
+                    {
+                        "description": "Article to create",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.createArticleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.messageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/blog/articles/{slug}": {
+            "get": {
+                "description": "Returns a single article identified by its slug.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blog"
+                ],
+                "summary": "Get an article by slug",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Article slug",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.article"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Deletes the article identified by its slug.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blog"
+                ],
+                "summary": "Delete an article",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Article slug",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.messageResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "Updates one or more fields of the article identified by its slug.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "blog"
+                ],
+                "summary": "Update an article",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Article slug",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.updateArticleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.messageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "description": "Returns the server version and the status of its services.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Health check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.healthResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/server.healthResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/words": {
+            "get": {
+                "description": "Returns English words whose term starts with the given prefix.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "words"
+                ],
+                "summary": "Search for words",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Prefix to search for",
+                        "name": "prefix",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/words/{word}/etymology": {
+            "get": {
+                "description": "Returns the graph of ancestor words, their language families, and a GeoJSON map of where those languages are spoken.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "words"
+                ],
+                "summary": "Get a word's etymology graph",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The word to look up",
+                        "name": "word",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "English",
+                        "description": "Language of the word",
+                        "name": "lang",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.etymologyResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/words/{word}/history": {
+            "get": {
+                "description": "Returns a one-sentence summary of a word's origin and history.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "words"
+                ],
+                "summary": "Get a word's origin and history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The word to look up",
+                        "name": "word",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "English",
+                        "description": "Language of the word",
+                        "name": "lang",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.historyResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/words/{word}/ipa": {
+            "get": {
+                "description": "Returns the International Phonetic Alphabet transcription for a word.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "words"
+                ],
+                "summary": "Get a word's IPA transcription",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The word to look up",
+                        "name": "word",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "English",
+                        "description": "Language of the word",
+                        "name": "lang",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.ipaResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "server.article": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "modified": {
+                    "type": "string"
+                },
+                "published": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.articleSummary": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "modified": {
+                    "type": "string"
+                },
+                "published": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.articlesResponse": {
+            "type": "object",
+            "properties": {
+                "articles": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.articleSummary"
+                    }
+                }
+            }
+        },
+        "server.createArticleRequest": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.etymologyResponse": {
+            "type": "object",
+            "properties": {
+                "family": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "geojson": {
+                    "$ref": "#/definitions/server.geoJSON"
+                },
+                "graph": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                    }
+                }
+            }
+        },
+        "server.feature": {
+            "type": "object",
+            "properties": {
+                "geometry": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "properties": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "type": {
+                    "type": "string",
+                    "example": "Feature"
+                }
+            }
+        },
+        "server.geoJSON": {
+            "type": "object",
+            "properties": {
+                "features": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.feature"
+                    }
+                },
+                "type": {
+                    "type": "string",
+                    "example": "FeatureCollection"
+                }
+            }
+        },
+        "server.healthResponse": {
+            "type": "object",
+            "properties": {
+                "services": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.historyResponse": {
+            "type": "object",
+            "properties": {
+                "history": {
+                    "type": "string"
+                },
+                "word": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.ipaResponse": {
+            "type": "object",
+            "properties": {
+                "ipa": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.messageResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.updateArticleRequest": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        }
+    }
 }

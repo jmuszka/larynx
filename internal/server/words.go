@@ -26,6 +26,33 @@ func (s *Server) wordsRouter() http.Handler {
 	return r
 }
 
+type etymologyResponse struct {
+	Graph   []map[string]any `json:"graph"`
+	Family  []string         `json:"family"`
+	GeoJSON geoJSON          `json:"geojson"`
+}
+
+type geoJSON struct {
+	Type     string    `json:"type" example:"FeatureCollection"`
+	Features []feature `json:"features"`
+}
+
+type feature struct {
+	Type       string         `json:"type" example:"Feature"`
+	Properties map[string]any `json:"properties"`
+	Geometry   map[string]any `json:"geometry"`
+}
+
+// handleGetEtymology godoc
+// @Summary      Get a word's etymology graph
+// @Description  Returns the graph of ancestor words, their language families, and a GeoJSON map of where those languages are spoken.
+// @Tags         words
+// @Produce      json
+// @Param        word  path      string  true  "The word to look up"
+// @Param        lang  query     string  false "Language of the word"  default(English)
+// @Success      200   {object}  etymologyResponse
+// @Failure      500   {object}  map[string]string
+// @Router       /words/{word}/etymology [get]
 func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -188,6 +215,21 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
 
+type historyResponse struct {
+	Word    string `json:"word"`
+	History string `json:"history"`
+}
+
+// handleGetHistory godoc
+// @Summary      Get a word's origin and history
+// @Description  Returns a one-sentence summary of a word's origin and history.
+// @Tags         words
+// @Produce      json
+// @Param        word  path      string  true  "The word to look up"
+// @Param        lang  query     string  false "Language of the word"  default(English)
+// @Success      200   {object}  historyResponse
+// @Failure      500   {object}  map[string]string
+// @Router       /words/{word}/history [get]
 func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -330,6 +372,15 @@ func (s *Server) handleGetDefinition(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleSearchWords godoc
+// @Summary      Search for words
+// @Description  Returns English words whose term starts with the given prefix.
+// @Tags         words
+// @Produce      json
+// @Param        prefix  query     string  true  "Prefix to search for"
+// @Success      200     {array}   string
+// @Failure      500     {object}  map[string]string
+// @Router       /words [get]
 func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -375,6 +426,20 @@ func unescapeParam(r *http.Request, param string) string {
 	return word
 }
 
+type ipaResponse struct {
+	IPA string `json:"ipa"`
+}
+
+// handleGetIpa godoc
+// @Summary      Get a word's IPA transcription
+// @Description  Returns the International Phonetic Alphabet transcription for a word.
+// @Tags         words
+// @Produce      json
+// @Param        word  path      string  true  "The word to look up"
+// @Param        lang  query     string  false "Language of the word"  default(English)
+// @Success      200   {object}  ipaResponse
+// @Failure      500   {object}  map[string]string
+// @Router       /words/{word}/ipa [get]
 func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
