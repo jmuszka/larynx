@@ -11,15 +11,15 @@ import (
 	_ "github.com/jmuszka/larynx/docs"
 )
 
-func splitOrigins(raw string) []string {
+func splitCSV(raw string) []string {
 	parts := strings.Split(raw, ",")
-	origins := make([]string, 0, len(parts))
+	values := make([]string, 0, len(parts))
 	for _, p := range parts {
 		if p = strings.TrimSpace(p); p != "" {
-			origins = append(origins, p)
+			values = append(values, p)
 		}
 	}
-	return origins
+	return values
 }
 
 func Loadenv() {
@@ -54,7 +54,8 @@ func main() {
 		AIKey:          os.Getenv("AI_API_KEY"),
 		AIModel:        os.Getenv("AI_MODEL"),
 		Logger:         logger,
-		AllowedOrigins: splitOrigins(os.Getenv("ALLOWED_ORIGINS")),
+		AllowedOrigins: splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		BearerTokens:   splitCSV(os.Getenv("BEARER_TOKENS")),
 		DebugMode:      strings.ToLower(os.Getenv("DEBUG")) == "true",
 	}
 

@@ -29,6 +29,7 @@ type Config struct {
 	AIModel        string
 	Logger         *logging.Service
 	AllowedOrigins []string
+	BearerTokens   []string
 	DebugMode      bool
 }
 

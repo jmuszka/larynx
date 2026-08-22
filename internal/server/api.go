@@ -10,6 +10,8 @@ import (
 func (s *Server) apiRouter() http.Handler {
 	r := chi.NewRouter()
 
+	r.Use(s.bearerAuth)
+
 	r.Mount("/health", s.healthRouter())
 	r.Mount("/words", s.wordsRouter())
 	r.Mount("/games", s.gamesRouter())
