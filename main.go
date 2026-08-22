@@ -7,6 +7,8 @@ import (
 	"github.com/jmuszka/larynx/internal/logging"
 	"github.com/jmuszka/larynx/internal/server"
 	"github.com/joho/godotenv"
+
+	_ "github.com/jmuszka/larynx/docs"
 )
 
 func splitOrigins(raw string) []string {
@@ -28,6 +30,10 @@ func Loadenv() {
 
 const version = "preview"
 
+// @title           Larynx API
+// @version         preview
+// @description     Larynx word etymology and language API.
+// @BasePath        /api/v1
 func main() {
 	Loadenv()
 
