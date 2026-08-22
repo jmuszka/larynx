@@ -40,7 +40,6 @@ type Server struct {
 	cache      *cache.Cache
 	ai         *ai.Service
 	httpClient *http.Client
-	ctx        context.Context
 	version    string
 }
 
@@ -88,6 +87,7 @@ func New(cfg Config) *Server {
 	cache := cache.New(rdb)
 	cfg.Logger.Info("redis connection established")
 
+	// For web scraping
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 
 	aiService, err := ai.New(ai.Config{
@@ -101,12 +101,13 @@ func New(cfg Config) *Server {
 	}
 	cfg.Logger.Info("ai service initialized")
 
-	s := &Server{logger: cfg.Logger, driver: driver, db: db, ctx: ctx, version: cfg.Version, cache: cache, ai: aiService, httpClient: httpClient}
+	s := &Server{logger: cfg.Logger, driver: driver, db: db, version: cfg.Version, cache: cache, ai: aiService, httpClient: httpClient}
 
 	// Routing
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(15 * time.Second))
 
 	// CORS
 	if cfg.DebugMode {
