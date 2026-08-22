@@ -34,6 +34,14 @@ const version = "preview"
 // @version         preview
 // @description     Larynx word etymology and language API.
 // @BasePath        /api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in              header
+// @name            Authorization
+// @description     Client bearer token. Enter the full value as: Bearer <token>
+// @securityDefinitions.apikey AdminJWTAuth
+// @in              header
+// @name            X-Admin-JWT
+// @description     Admin JWT for blog write endpoints (create/update/delete)
 func main() {
 	Loadenv()
 

@@ -17,6 +17,11 @@ const docTemplate = `{
     "paths": {
         "/blog/articles": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns all articles ordered by most recently modified.",
                 "produces": [
                     "application/json"
@@ -46,6 +51,14 @@ const docTemplate = `{
         },
         "/blog/articles/create": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "AdminJWTAuth": []
+                    }
+                ],
                 "description": "Creates a new article from the provided title, description, and content.",
                 "consumes": [
                     "application/json"
@@ -98,6 +111,11 @@ const docTemplate = `{
         },
         "/blog/articles/{slug}": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns a single article identified by its slug.",
                 "produces": [
                     "application/json"
@@ -134,6 +152,14 @@ const docTemplate = `{
                 }
             },
             "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "AdminJWTAuth": []
+                    }
+                ],
                 "description": "Deletes the article identified by its slug.",
                 "produces": [
                     "application/json"
@@ -170,6 +196,14 @@ const docTemplate = `{
                 }
             },
             "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    },
+                    {
+                        "AdminJWTAuth": []
+                    }
+                ],
                 "description": "Updates one or more fields of the article identified by its slug.",
                 "consumes": [
                     "application/json"
@@ -229,6 +263,11 @@ const docTemplate = `{
         },
         "/health": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns the server version and the status of its services.",
                 "produces": [
                     "application/json"
@@ -255,6 +294,11 @@ const docTemplate = `{
         },
         "/words": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns English words whose term starts with the given prefix.",
                 "produces": [
                     "application/json"
@@ -296,6 +340,11 @@ const docTemplate = `{
         },
         "/words/{word}/etymology": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns the graph of ancestor words, their language families, and a GeoJSON map of where those languages are spoken.",
                 "produces": [
                     "application/json"
@@ -341,6 +390,11 @@ const docTemplate = `{
         },
         "/words/{word}/history": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns a one-sentence summary of a word's origin and history.",
                 "produces": [
                     "application/json"
@@ -386,6 +440,11 @@ const docTemplate = `{
         },
         "/words/{word}/ipa": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns the International Phonetic Alphabet transcription for a word.",
                 "produces": [
                     "application/json"
@@ -609,6 +668,20 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        }
+    },
+    "securityDefinitions": {
+        "AdminJWTAuth": {
+            "description": "Admin JWT for blog write endpoints (create/update/delete)",
+            "type": "apiKey",
+            "name": "X-Admin-JWT",
+            "in": "header"
+        },
+        "BearerAuth": {
+            "description": "Client bearer token. Enter the full value as: Bearer \u003ctoken\u003e",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
         }
     }
 }`

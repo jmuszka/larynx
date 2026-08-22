@@ -70,6 +70,7 @@ func (s *Server) blogRouter() http.Handler {
 // @Produce      json
 // @Success      200  {object}  articlesResponse
 // @Failure      500  {object}  map[string]string
+// @Security     BearerAuth
 // @Router       /blog/articles [get]
 func (s *Server) handleGetArticles(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -115,6 +116,8 @@ func (s *Server) handleGetArticles(w http.ResponseWriter, r *http.Request) {
 // @Success      200   {object}  messageResponse
 // @Failure      400   {object}  map[string]string
 // @Failure      500   {object}  map[string]string
+// @Security     BearerAuth
+// @Security     AdminJWTAuth
 // @Router       /blog/articles/create [post]
 func (s *Server) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -151,6 +154,7 @@ func (s *Server) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 // @Param        slug  path      string  true  "Article slug"
 // @Success      200   {object}  article
 // @Failure      500   {object}  map[string]string
+// @Security     BearerAuth
 // @Router       /blog/articles/{slug} [get]
 func (s *Server) handleGetArticleBySlug(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -184,6 +188,8 @@ func (s *Server) handleGetArticleBySlug(w http.ResponseWriter, r *http.Request) 
 // @Success      200   {object}  messageResponse
 // @Failure      400   {object}  map[string]string
 // @Failure      500   {object}  map[string]string
+// @Security     BearerAuth
+// @Security     AdminJWTAuth
 // @Router       /blog/articles/{slug} [patch]
 func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -245,6 +251,8 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 // @Param        slug  path      string  true  "Article slug"
 // @Success      200   {object}  messageResponse
 // @Failure      500   {object}  map[string]string
+// @Security     BearerAuth
+// @Security     AdminJWTAuth
 // @Router       /blog/articles/{slug} [delete]
 func (s *Server) handleDeleteArticleBySlug(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")

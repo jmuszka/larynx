@@ -139,6 +139,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: List articles
       tags:
       - blog
@@ -164,6 +166,9 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
+      - AdminJWTAuth: []
       summary: Delete an article
       tags:
       - blog
@@ -188,6 +193,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Get an article by slug
       tags:
       - blog
@@ -226,6 +233,9 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
+      - AdminJWTAuth: []
       summary: Update an article
       tags:
       - blog
@@ -261,6 +271,9 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
+      - AdminJWTAuth: []
       summary: Create an article
       tags:
       - blog
@@ -278,6 +291,8 @@ paths:
           description: Service Unavailable
           schema:
             $ref: '#/definitions/server.healthResponse'
+      security:
+      - BearerAuth: []
       summary: Health check
       tags:
       - health
@@ -305,6 +320,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Search for words
       tags:
       - words
@@ -336,6 +353,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Get a word's etymology graph
       tags:
       - words
@@ -366,6 +385,8 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Get a word's origin and history
       tags:
       - words
@@ -397,7 +418,20 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Get a word's IPA transcription
       tags:
       - words
+securityDefinitions:
+  AdminJWTAuth:
+    description: Admin JWT for blog write endpoints (create/update/delete)
+    in: header
+    name: X-Admin-JWT
+    type: apiKey
+  BearerAuth:
+    description: 'Client bearer token. Enter the full value as: Bearer <token>'
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

@@ -52,6 +52,7 @@ type feature struct {
 // @Param        lang  query     string  false "Language of the word"  default(English)
 // @Success      200   {object}  etymologyResponse
 // @Failure      500   {object}  map[string]string
+// @Security     BearerAuth
 // @Router       /words/{word}/etymology [get]
 func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -229,6 +230,7 @@ type historyResponse struct {
 // @Param        lang  query     string  false "Language of the word"  default(English)
 // @Success      200   {object}  historyResponse
 // @Failure      500   {object}  map[string]string
+// @Security     BearerAuth
 // @Router       /words/{word}/history [get]
 func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -380,6 +382,7 @@ func (s *Server) handleGetDefinition(w http.ResponseWriter, r *http.Request) {
 // @Param        prefix  query     string  true  "Prefix to search for"
 // @Success      200     {array}   string
 // @Failure      500     {object}  map[string]string
+// @Security     BearerAuth
 // @Router       /words [get]
 func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -439,6 +442,7 @@ type ipaResponse struct {
 // @Param        lang  query     string  false "Language of the word"  default(English)
 // @Success      200   {object}  ipaResponse
 // @Failure      500   {object}  map[string]string
+// @Security     BearerAuth
 // @Router       /words/{word}/ipa [get]
 func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
