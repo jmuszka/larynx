@@ -11,15 +11,15 @@ import (
 	_ "github.com/jmuszka/larynx/docs"
 )
 
-func splitOrigins(raw string) []string {
+func splitCSV(raw string) []string {
 	parts := strings.Split(raw, ",")
-	origins := make([]string, 0, len(parts))
+	values := make([]string, 0, len(parts))
 	for _, p := range parts {
 		if p = strings.TrimSpace(p); p != "" {
-			origins = append(origins, p)
+			values = append(values, p)
 		}
 	}
-	return origins
+	return values
 }
 
 func Loadenv() {
@@ -34,6 +34,14 @@ const version = "preview"
 // @version         preview
 // @description     Larynx word etymology and language API.
 // @BasePath        /api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in              header
+// @name            Authorization
+// @description     Client bearer token. Enter the full value as: Bearer <token>
+// @securityDefinitions.apikey AdminJWTAuth
+// @in              header
+// @name            X-Admin-JWT
+// @description     Admin JWT for blog write endpoints (create/update/delete)
 func main() {
 	Loadenv()
 
@@ -43,19 +51,31 @@ func main() {
 	})
 	defer logger.Close()
 
+	adminJWTSecret := os.Getenv("ADMIN_JWT_SECRET")
+	if adminJWTSecret == "" {
+		logger.Fatal("ADMIN_JWT_SECRET is not set")
+	}
+	adminJWTSubject := os.Getenv("ADMIN_JWT_SUBJECT")
+	if adminJWTSubject == "" {
+		adminJWTSubject = "blog-admin"
+	}
+
 	cfg := server.Config{
-		Addr:           ":" + os.Getenv("PORT"),
-		Neo4jUri:       os.Getenv("NEO4J_URI"),
-		Neo4jUser:      os.Getenv("NEO4J_USER"),
-		Neo4jPassword:  os.Getenv("NEO4J_PASSWORD"),
-		Version:        version,
-		SqlitePath:     os.Getenv("SQLITE_PATH"),
-		AIBaseURL:      os.Getenv("AI_BASE_URL"),
-		AIKey:          os.Getenv("AI_API_KEY"),
-		AIModel:        os.Getenv("AI_MODEL"),
-		Logger:         logger,
-		AllowedOrigins: splitOrigins(os.Getenv("ALLOWED_ORIGINS")),
-		DebugMode:      strings.ToLower(os.Getenv("DEBUG")) == "true",
+		Addr:            ":" + os.Getenv("PORT"),
+		Neo4jUri:        os.Getenv("NEO4J_URI"),
+		Neo4jUser:       os.Getenv("NEO4J_USER"),
+		Neo4jPassword:   os.Getenv("NEO4J_PASSWORD"),
+		Version:         version,
+		SqlitePath:      os.Getenv("SQLITE_PATH"),
+		AIBaseURL:       os.Getenv("AI_BASE_URL"),
+		AIKey:           os.Getenv("AI_API_KEY"),
+		AIModel:         os.Getenv("AI_MODEL"),
+		Logger:          logger,
+		AllowedOrigins:  splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		BearerTokens:    splitCSV(os.Getenv("BEARER_TOKENS")),
+		AdminJWTSecret:  adminJWTSecret,
+		AdminJWTSubject: adminJWTSubject,
+		DebugMode:       strings.ToLower(os.Getenv("DEBUG")) == "true",
 	}
 
 	s := server.New(cfg)

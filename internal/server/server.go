@@ -18,18 +18,21 @@ import (
 )
 
 type Config struct {
-	Addr           string
-	Neo4jUri       string
-	Neo4jUser      string
-	Neo4jPassword  string
-	SqlitePath     string
-	Version        string
-	AIBaseURL      string
-	AIKey          string
-	AIModel        string
-	Logger         *logging.Service
-	AllowedOrigins []string
-	DebugMode      bool
+	Addr            string
+	Neo4jUri        string
+	Neo4jUser       string
+	Neo4jPassword   string
+	SqlitePath      string
+	Version         string
+	AIBaseURL       string
+	AIKey           string
+	AIModel         string
+	Logger          *logging.Service
+	AllowedOrigins  []string
+	BearerTokens    []string
+	AdminJWTSecret  string
+	AdminJWTSubject string
+	DebugMode       bool
 }
 
 type Server struct {
@@ -117,7 +120,7 @@ func New(cfg Config) *Server {
 		r.Use(cors.Handler(cors.Options{
 			AllowedOrigins:   cfg.AllowedOrigins,
 			AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE"},
-			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-Admin-JWT"},
 			AllowCredentials: false,
 			MaxAge:           300,
 		}))
