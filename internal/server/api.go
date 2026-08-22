@@ -10,12 +10,13 @@ import (
 func (s *Server) apiRouter() http.Handler {
 	r := chi.NewRouter()
 
-	r.Use(s.bearerAuth)
-
-	r.Mount("/health", s.healthRouter())
-	r.Mount("/words", s.wordsRouter())
-	r.Mount("/games", s.gamesRouter())
-	r.Mount("/blog", s.blogRouter())
+	r.Group(func(r chi.Router) {
+		r.Use(s.bearerAuth)
+		r.Mount("/health", s.healthRouter())
+		r.Mount("/words", s.wordsRouter())
+		r.Mount("/games", s.gamesRouter())
+		r.Mount("/blog", s.blogRouter())
+	})
 
 	// Mount swagger API docs if in development mode
 	if s.cfg.DebugMode {
