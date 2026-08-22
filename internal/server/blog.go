@@ -51,10 +51,14 @@ func (s *Server) blogRouter() http.Handler {
 	r := chi.NewRouter()
 
 	r.Get("/articles", s.handleGetArticles)
-	r.Post("/articles/create", s.handleCreateArticle)
 	r.Get("/articles/{slug}", s.handleGetArticleBySlug)
-	r.Patch("/articles/{slug}", s.handleUpdateArticleBySlug)
-	r.Delete("/articles/{slug}", s.handleDeleteArticleBySlug)
+
+	r.Group(func(r chi.Router) {
+		r.Use(s.adminJWTAuth)
+		r.Post("/articles/create", s.handleCreateArticle)
+		r.Patch("/articles/{slug}", s.handleUpdateArticleBySlug)
+		r.Delete("/articles/{slug}", s.handleDeleteArticleBySlug)
+	})
 
 	return r
 }
