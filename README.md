@@ -65,6 +65,27 @@ All endpoints are mounted under `/api/v1`.
 | `PATCH` | `/blog/articles/{slug}` | Update an article |
 | `DELETE` | `/blog/articles/{slug}` | Delete an article |
 
+## Swagger
+
+API documentation is generated with [swaggo/swag](https://github.com/swaggo/swag) and served by Swagger UI. When debug mode is enabled (`DEBUG=true` in `.env`), the interactive docs are available at:
+
+- Swagger UI: `GET /api/v1/docs`
+- Raw spec: `GET /api/v1/docs/doc.json`
+
+### Regenerating docs
+
+Endpoints are documented via comment annotations (e.g. `@Summary`, `@Param`, `@Success`, `@Router`) directly above the handler functions. After adding or editing annotations, regenerate the `docs/` package:
+
+```bash
+# Install the CLI (binary lands in $GOPATH/bin)
+go install github.com/swaggo/swag/cmd/swag@latest
+
+# Regenerate docs from annotations
+swag init -g main.go -o docs
+```
+
+The generated `docs/` directory is committed and imported via a blank import in `main.go`, so it must be regenerated whenever handlers change.
+
 ## Setup
 
 ### Prerequisites
