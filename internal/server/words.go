@@ -11,18 +11,18 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httprate"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
 )
 
 func (s *Server) wordsRouter() http.Handler {
 	r := chi.NewRouter()
 
-	r.Get("/{word}/etymology", s.handleGetEtymology)
-	r.Get("/{word}/history", s.handleGetHistory)
+	r.With(httprate.LimitBy(rateLimitEtymologyPerIP, rateLimitWindow, clientIPKey, httprate.WithLimitHandler(rateLimitHandler))).Get("/{word}/etymology", s.handleGetEtymology)
+	r.With(httprate.LimitBy(rateLimitHistoryPerIP, rateLimitWindow, clientIPKey, httprate.WithLimitHandler(rateLimitHandler))).Get("/{word}/history", s.handleGetHistory)
 	// r.Get("/{word}/definition", s.handleGetDefinition)
 	r.Get("/{word}/ipa", s.handleGetIpa)
 	r.Get("/", s.handleSearchWords)
-
 	return r
 }
 

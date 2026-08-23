@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httprate"
 )
 
 type article struct {
@@ -55,6 +56,7 @@ func (s *Server) blogRouter() http.Handler {
 
 	r.Group(func(r chi.Router) {
 		r.Use(s.adminJWTAuth)
+		r.Use(httprate.LimitBy(rateLimitBlogWritePerUser, rateLimitWindow, adminUserKey, httprate.WithLimitHandler(rateLimitHandler)))
 		r.Post("/articles/create", s.handleCreateArticle)
 		r.Patch("/articles/{slug}", s.handleUpdateArticleBySlug)
 		r.Delete("/articles/{slug}", s.handleDeleteArticleBySlug)
