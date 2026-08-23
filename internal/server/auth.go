@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"net/http"
@@ -10,6 +11,10 @@ import (
 )
 
 const bearerPrefix = "Bearer "
+
+type contextKey int
+
+const adminSubjectKey contextKey = iota
 
 func (s *Server) bearerAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +74,7 @@ func (s *Server) adminJWTAuth(next http.Handler) http.Handler {
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		ctx := context.WithValue(r.Context(), adminSubjectKey, claims.Subject)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
