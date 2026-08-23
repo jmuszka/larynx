@@ -18,21 +18,25 @@ import (
 )
 
 type Config struct {
-	Addr            string
-	Neo4jUri        string
-	Neo4jUser       string
-	Neo4jPassword   string
-	SqlitePath      string
-	Version         string
-	AIBaseURL       string
-	AIKey           string
-	AIModel         string
-	Logger          *logging.Service
-	AllowedOrigins  []string
-	BearerTokens    []string
-	AdminJWTSecret  string
-	AdminJWTSubject string
-	DebugMode       bool
+	Addr              string
+	Neo4jUri          string
+	Neo4jUser         string
+	Neo4jPassword     string
+	SqlitePath        string
+	Version           string
+	AIBaseURL         string
+	AIKey             string
+	AIModel           string
+	Logger            *logging.Service
+	AllowedOrigins    []string
+	BearerTokens      []string
+	AdminJWTSecret    string
+	AdminJWTSubject   string
+	DebugMode         bool
+	ReadHeaderTimeout time.Duration
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
 }
 
 type Server struct {

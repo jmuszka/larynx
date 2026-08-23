@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jmuszka/larynx/internal/logging"
 	"github.com/jmuszka/larynx/internal/server"
@@ -61,21 +62,25 @@ func main() {
 	}
 
 	cfg := server.Config{
-		Addr:            ":" + os.Getenv("PORT"),
-		Neo4jUri:        os.Getenv("NEO4J_URI"),
-		Neo4jUser:       os.Getenv("NEO4J_USER"),
-		Neo4jPassword:   os.Getenv("NEO4J_PASSWORD"),
-		Version:         version,
-		SqlitePath:      os.Getenv("SQLITE_PATH"),
-		AIBaseURL:       os.Getenv("AI_BASE_URL"),
-		AIKey:           os.Getenv("AI_API_KEY"),
-		AIModel:         os.Getenv("AI_MODEL"),
-		Logger:          logger,
-		AllowedOrigins:  splitCSV(os.Getenv("ALLOWED_ORIGINS")),
-		BearerTokens:    splitCSV(os.Getenv("BEARER_TOKENS")),
-		AdminJWTSecret:  adminJWTSecret,
-		AdminJWTSubject: adminJWTSubject,
-		DebugMode:       strings.ToLower(os.Getenv("DEBUG")) == "true",
+		Addr:              ":" + os.Getenv("PORT"),
+		Neo4jUri:          os.Getenv("NEO4J_URI"),
+		Neo4jUser:         os.Getenv("NEO4J_USER"),
+		Neo4jPassword:     os.Getenv("NEO4J_PASSWORD"),
+		Version:           version,
+		SqlitePath:        os.Getenv("SQLITE_PATH"),
+		AIBaseURL:         os.Getenv("AI_BASE_URL"),
+		AIKey:             os.Getenv("AI_API_KEY"),
+		AIModel:           os.Getenv("AI_MODEL"),
+		Logger:            logger,
+		AllowedOrigins:    splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		BearerTokens:      splitCSV(os.Getenv("BEARER_TOKENS")),
+		AdminJWTSecret:    adminJWTSecret,
+		AdminJWTSubject:   adminJWTSubject,
+		DebugMode:         strings.ToLower(os.Getenv("DEBUG")) == "true",
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	s := server.New(cfg)
