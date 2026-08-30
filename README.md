@@ -161,12 +161,23 @@ docker compose up -d
 # 4. Restore the Neo4j database
 docker compose exec neo4j neo4j-admin database restore neo4j --from-path=/data/neo4j.dump
 
-# 5. Build and run
-go build -o larynx .
-./larynx
+# 5. Run
+go run .
 ```
 
 The server listens on the port specified in `.env` (default: `8080`).
+
+### Running with air (recommended)
+
+While `go run .` works, it is recommended to use [air](https://github.com/air-verse/air) for live reloading during development. Air rebuilds and restarts the server automatically whenever you edit a file.
+
+```bash
+# Install air
+go install github.com/air-verse/air@latest
+
+# Run with hot reload
+air
+```
 
 ### Environment Variables
 
