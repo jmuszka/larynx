@@ -54,7 +54,8 @@ type chatMessage struct {
 
 type chatResponse struct {
 	Choices []struct {
-		Message chatMessage `json:"message"`
+		Message      chatMessage `json:"message"`
+		FinishReason string      `json:"finish_reason"`
 	} `json:"choices"`
 	Error *struct {
 		Message string `json:"message"`
@@ -62,61 +63,78 @@ type chatResponse struct {
 }
 
 func (s *Service) Prompt(ctx context.Context, prompt string) (string, error) {
-	reqBody := chatRequest{
-		Model:       s.cfg.Model,
-		MaxTokens:   128,
-		Temperature: 0.0,
-		Messages: []chatMessage{
-			{Role: "user", Content: prompt},
-		},
-	}
-
-	b, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", fmt.Errorf("ai: marshal request: %w", err)
-	}
-
 	url := strings.TrimRight(s.cfg.BaseURL, "/")
 	if !strings.HasSuffix(url, "/v1") {
 		url += "/v1"
 	}
 	url += "/chat/completions"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
-	if err != nil {
-		return "", fmt.Errorf("ai: create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if s.cfg.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+s.cfg.APIKey)
+
+	messages := []chatMessage{
+		{Role: "user", Content: prompt},
 	}
 
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("ai: send request: %w", err)
-	}
-	defer resp.Body.Close()
+	const maxContinuations = 10
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("ai: read response: %w", err)
+	var result strings.Builder
+	for i := 0; i <= maxContinuations; i++ {
+		reqBody := chatRequest{
+			Model:       s.cfg.Model,
+			MaxTokens:   128,
+			Temperature: 0.0,
+			Messages:    messages,
+		}
+
+		b, err := json.Marshal(reqBody)
+		if err != nil {
+			return "", fmt.Errorf("ai: marshal request: %w", err)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
+		if err != nil {
+			return "", fmt.Errorf("ai: create request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if s.cfg.APIKey != "" {
+			req.Header.Set("Authorization", "Bearer "+s.cfg.APIKey)
+		}
+
+		resp, err := s.client.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("ai: send request: %w", err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return "", fmt.Errorf("ai: read response: %w", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("ai: HTTP %d: %s", resp.StatusCode, string(body))
+		}
+
+		var cr chatResponse
+		if err := json.Unmarshal(body, &cr); err != nil {
+			return "", fmt.Errorf("ai: unmarshal response: %w", err)
+		}
+
+		if cr.Error != nil {
+			return "", fmt.Errorf("ai: API error: %s", cr.Error.Message)
+		}
+
+		if len(cr.Choices) == 0 {
+			return "", fmt.Errorf("ai: no choices in response")
+		}
+
+		choice := cr.Choices[0]
+		result.WriteString(choice.Message.Content)
+
+		if choice.FinishReason != "length" {
+			return result.String(), nil
+		}
+
+		// Truncated by max_tokens; continue from where the model left off.
+		messages = append(messages, choice.Message)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("ai: HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
-	var cr chatResponse
-	if err := json.Unmarshal(body, &cr); err != nil {
-		return "", fmt.Errorf("ai: unmarshal response: %w", err)
-	}
-
-	if cr.Error != nil {
-		return "", fmt.Errorf("ai: API error: %s", cr.Error.Message)
-	}
-
-	if len(cr.Choices) == 0 {
-		return "", fmt.Errorf("ai: no choices in response")
-	}
-
-	return cr.Choices[0].Message.Content, nil
+	return "", fmt.Errorf("ai: exceeded %d continuations without finishing", maxContinuations)
 }
