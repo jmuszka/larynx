@@ -393,6 +393,13 @@ func (s *Server) handleGetDefinition(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Check if response exists in cache
+	val, err := s.cache.Get(r.Context(), r.RequestURI)
+	if err == nil {
+		w.Write([]byte(val))
+		return
+	}
+
 	// Parse GET parameters
 	prefix := r.URL.Query().Get("prefix")
 
@@ -425,6 +432,11 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(terms)
+
+	// Write to cache so that future queries are quick
+	encoded, _ := json.Marshal(terms)
+	w.Write(encoded)
+	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
 
 func unescapeParam(r *http.Request, param string) string {
