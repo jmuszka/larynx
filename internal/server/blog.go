@@ -78,7 +78,9 @@ func (s *Server) handleGetArticles(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Retrieve blogposts
-	rows, err := s.db.Query("SELECT slug, title, description, published, modified FROM articles ORDER BY modified DESC")
+	const sqlQuery = "SELECT slug, title, description, published, modified FROM articles ORDER BY modified DESC"
+	s.logger.Debug("SQL: " + sqlQuery)
+	rows, err := s.db.Query(sqlQuery)
 	if err != nil {
 		log.Fatalf("Query failed: %v", err)
 	}
@@ -136,7 +138,9 @@ func (s *Server) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 
 	// Write new article to database
 	slug := strings.Join(strings.Split(strings.ToLower(req.Title), " "), "-")
-	_, err = s.db.Exec("INSERT INTO articles (title, description, content, slug) VALUES (?, ?, ?, ?)", req.Title, req.Description, req.Content, slug)
+	const insertQuery = "INSERT INTO articles (title, description, content, slug) VALUES (?, ?, ?, ?)"
+	s.logger.Debug("SQL: " + renderSQL(insertQuery, []any{req.Title, req.Description, req.Content, slug}))
+	_, err = s.db.Exec(insertQuery, req.Title, req.Description, req.Content, slug)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -166,8 +170,10 @@ func (s *Server) handleGetArticleBySlug(w http.ResponseWriter, r *http.Request) 
 	var a article
 
 	// Retrieve blogpost
+	const sqlQuery = "SELECT slug, title, description, content, published, modified FROM articles WHERE slug LIKE ?"
+	s.logger.Debug("SQL: " + renderSQL(sqlQuery, []any{slug}))
 	err := s.db.QueryRow(
-		"SELECT slug, title, description, content, published, modified FROM articles WHERE slug LIKE ?",
+		sqlQuery,
 		slug,
 	).Scan(&a.Slug, &a.Title, &a.Description, &a.Content, &a.Published, &a.Modified)
 	if err != nil {
@@ -233,6 +239,7 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 	args = append(args, slug)
 
 	// Update article in database
+	s.logger.Debug("SQL: " + renderSQL(query, args))
 	_, err = s.db.Exec(query, args...)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -261,7 +268,9 @@ func (s *Server) handleDeleteArticleBySlug(w http.ResponseWriter, r *http.Reques
 	slug := chi.URLParam(r, "slug")
 
 	// Delete article from database
-	_, err := s.db.Exec("DELETE FROM articles WHERE slug = ?", slug)
+	const deleteQuery = "DELETE FROM articles WHERE slug = ?"
+	s.logger.Debug("SQL: " + renderSQL(deleteQuery, []any{slug}))
+	_, err := s.db.Exec(deleteQuery, slug)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})

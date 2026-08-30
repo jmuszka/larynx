@@ -71,15 +71,18 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	}
 
 	/* Get graph pathways */
-	result, err := neo4j.ExecuteQuery(r.Context(), s.driver, `
+	cypher := `
 		MATCH path = (n: Word {term: $word, lang: $lang})-[r:CHILD_OF*]->(m: Word)
-		WHERE n.reltype <> "cognate_of" AND all(innerNode IN nodes(path) WHERE innerNode.reltype IS NULL OR innerNode.reltype <> "cognate_of")
+		WHERE n.reltype <> 'cognate_of' AND all(innerNode IN nodes(path) WHERE innerNode.reltype IS NULL OR innerNode.reltype <> 'cognate_of')
 		RETURN path
-	`,
-		map[string]any{
-			"word": unescapeParam(r, "word"),
-			"lang": lang,
-		}, neo4j.EagerResultTransformer,
+	`
+	params := map[string]any{
+		"word": unescapeParam(r, "word"),
+		"lang": lang,
+	}
+	s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
+	result, err := neo4j.ExecuteQuery(r.Context(), s.driver, cypher,
+		params, neo4j.EagerResultTransformer,
 		neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
 		panic(err)
@@ -107,7 +110,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	family = append(family, "English")
 
 	// Get families
-	result, err = neo4j.ExecuteQuery(r.Context(), s.driver, `
+	cypher = `
 		UNWIND $langs AS langName
 		MATCH (l:Language)
 		WHERE l.name CONTAINS langName
@@ -145,10 +148,13 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		WITH DISTINCT branch
 		WHERE branch IS NOT NULL
 		RETURN collect(branch.name) AS branches
-	`,
-		map[string]any{
-			"langs": family,
-		}, neo4j.EagerResultTransformer,
+	`
+	params = map[string]any{
+		"langs": family,
+	}
+	s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
+	result, err = neo4j.ExecuteQuery(r.Context(), s.driver, cypher,
+		params, neo4j.EagerResultTransformer,
 		neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
 		panic(err)
@@ -162,10 +168,10 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(branches)
 
 	/* Get flat geojson polygons */
-	var params map[string]any
-	cypher := `MATCH (l:Language) WHERE ANY(prefix IN $prefixes WHERE l.name CONTAINS prefix) RETURN l.name AS name, l.geometryJSON AS json`
+	cypher = `MATCH (l:Language) WHERE ANY(prefix IN $prefixes WHERE l.name CONTAINS prefix) RETURN l.name AS name, l.geometryJSON AS json`
 	params = map[string]any{"prefixes": family}
 
+	s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
 	result, err = neo4j.ExecuteQuery(
 		r.Context(),
 		s.driver,
@@ -392,17 +398,17 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 
 	// Construct Cypher query
 	const query = `
-		MATCH (n:Word { lang: "English" })
+		MATCH (n:Word { lang: 'English' })
 		WHERE n.term IS NOT NULL AND n.term STARTS WITH toLower($prefix)
 		RETURN DISTINCT n.term AS term
 		ORDER BY size(term), term ASC
 	`
 
 	// Fetch search results from Neo4j
+	searchParams := map[string]any{"prefix": prefix}
+	s.logger.Debug("CYPHER: " + renderCypher(query, searchParams))
 	result, err := neo4j.ExecuteQuery(r.Context(), s.driver, query,
-		map[string]any{
-			"prefix": prefix,
-		}, neo4j.EagerResultTransformer,
+		searchParams, neo4j.EagerResultTransformer,
 		neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
 		panic(err)
@@ -470,8 +476,10 @@ func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
 	var ipa string
 
 	// Retrieve blogpost
+	const sqlQuery = "SELECT ipa FROM ipa WHERE word LIKE ?"
+	s.logger.Debug("SQL: " + renderSQL(sqlQuery, []any{word}))
 	err = s.db.QueryRow(
-		"SELECT ipa FROM ipa WHERE word LIKE ?",
+		sqlQuery,
 		word,
 	).Scan(&ipa)
 	if err != nil {
