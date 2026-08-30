@@ -72,8 +72,8 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 
 	/* Get graph pathways */
 	cypher := `
-		MATCH path = (n: Word {term: $word, lang: $lang})-[r:CHILD_OF*]->(m: Word)
-		WHERE n.reltype <> 'cognate_of' AND all(innerNode IN nodes(path) WHERE innerNode.reltype IS NULL OR innerNode.reltype <> 'cognate_of')
+		MATCH path = (n: Word {term: $word, lang: $lang})-[r:CHILD_OF*0..]->(m: Word)
+		WHERE n.reltype IS NULL OR (n.reltype<> 'cognate_of' AND all(innerNode IN nodes(path) WHERE innerNode.reltype IS NULL OR innerNode.reltype <> 'cognate_of'))
 		RETURN path
 	`
 	params := map[string]any{
