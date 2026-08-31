@@ -92,7 +92,7 @@ func New(cfg Config) *Server {
 		Password: "",
 		DB:       0,
 	})
-	cache := cache.New(rdb)
+	cache := cache.New(rdb, cfg.Logger.Logger())
 	cfg.Logger.Info("redis connection established")
 
 	// For web scraping

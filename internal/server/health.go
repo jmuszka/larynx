@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -51,12 +50,12 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	status := http.StatusOK
 	if overall != "ok" {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		status = http.StatusServiceUnavailable
 	}
 
-	json.NewEncoder(w).Encode(healthResponse{
+	s.writeJSON(w, status, healthResponse{
 		Version:  s.version,
 		Status:   overall,
 		Services: services,

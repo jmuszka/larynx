@@ -1,9 +1,10 @@
 package server
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
@@ -82,15 +83,13 @@ func (s *Server) blogRouter() http.Handler {
 // @Security     BearerAuth
 // @Router       /blog/articles [get]
 func (s *Server) handleGetArticles(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	// Retrieve blogposts
 	const sqlQuery = "SELECT slug, title, description, published, modified FROM articles ORDER BY modified DESC"
 	s.logger.Debug("SQL: " + sqlQuery)
 	rows, err := s.db.Query(sqlQuery)
 	if err != nil {
 		s.logger.Error("query failed", "error", err)
-		http.Error(w, `{"error": "Failed to query database"}`, http.StatusInternalServerError)
+		s.writeJSONError(w, http.StatusInternalServerError, "Failed to query database")
 		return
 	}
 	defer rows.Close()
@@ -102,19 +101,19 @@ func (s *Server) handleGetArticles(w http.ResponseWriter, r *http.Request) {
 		// Scan targets MUST match the order of columns in SELECT statement
 		err := rows.Scan(&a.Slug, &a.Title, &a.Description, &a.Published, &a.Modified)
 		if err != nil {
-			http.Error(w, `{"error": "Failed to process data"}`, http.StatusInternalServerError)
-			log.Printf("Row scan failed: %v", err)
+			s.logger.Error("row scan failed", "error", err)
+			s.writeJSONError(w, http.StatusInternalServerError, "Failed to process data")
 			return
 		}
 		articles = append(articles, a)
 	}
 	if err = rows.Err(); err != nil {
-		http.Error(w, `{"error": "Database cursor error"}`, http.StatusInternalServerError)
-		log.Printf("Iteration error: %v", err)
+		s.logger.Error("iteration error", "error", err)
+		s.writeJSONError(w, http.StatusInternalServerError, "Database cursor error")
 		return
 	}
 
-	json.NewEncoder(w).Encode(articlesResponse{
+	s.writeJSON(w, http.StatusOK, articlesResponse{
 		Articles: articles,
 	})
 }
@@ -133,47 +132,38 @@ func (s *Server) handleGetArticles(w http.ResponseWriter, r *http.Request) {
 // @Security     AdminJWTAuth
 // @Router       /blog/articles/create [post]
 func (s *Server) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	// Parse input
 	var req createArticleRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON body"})
+		s.writeJSONError(w, http.StatusBadRequest, "Invalid JSON body")
 		return
 	}
 	defer r.Body.Close()
 
 	// Input validation
 	if len(req.Title) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "title is required"})
+		s.writeJSONError(w, http.StatusBadRequest, "title is required")
 		return
 	}
 	if len(req.Description) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "description is required"})
+		s.writeJSONError(w, http.StatusBadRequest, "description is required")
 		return
 	}
 	if len(req.Content) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "content is required"})
+		s.writeJSONError(w, http.StatusBadRequest, "content is required")
 		return
 	}
 	if len(req.Title) > maxTitleLength {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLength)})
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLength))
 		return
 	}
 	if len(req.Description) > maxDescriptionLength {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("description exceeds maximum length of %d characters", maxDescriptionLength)})
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("description exceeds maximum length of %d characters", maxDescriptionLength))
 		return
 	}
 	if len(req.Content) > maxContentLength {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("content exceeds maximum length of %d characters", maxContentLength)})
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("content exceeds maximum length of %d characters", maxContentLength))
 		return
 	}
 
@@ -183,12 +173,12 @@ func (s *Server) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 	s.logger.Debug("SQL: " + renderSQL(insertQuery, []any{req.Title, req.Description, req.Content, slug}))
 	_, err = s.db.Exec(insertQuery, req.Title, req.Description, req.Content, slug)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		s.logger.Error("failed to create article", "error", err)
+		s.writeJSONError(w, http.StatusInternalServerError, "Failed to create article")
 		return
 	}
 
-	json.NewEncoder(w).Encode(messageResponse{
+	s.writeJSON(w, http.StatusOK, messageResponse{
 		Message: "Article created successfully",
 	})
 }
@@ -204,19 +194,15 @@ func (s *Server) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 // @Security     BearerAuth
 // @Router       /blog/articles/{slug} [get]
 func (s *Server) handleGetArticleBySlug(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	slug := chi.URLParam(r, "slug")
 
 	// Input validation
 	if len(slug) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "slug is required"})
+		s.writeJSONError(w, http.StatusBadRequest, "slug is required")
 		return
 	}
 	if len(slug) > maxSlugLength {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("slug exceeds maximum length of %d characters", maxSlugLength)})
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("slug exceeds maximum length of %d characters", maxSlugLength))
 		return
 	}
 
@@ -230,12 +216,16 @@ func (s *Server) handleGetArticleBySlug(w http.ResponseWriter, r *http.Request) 
 		slug,
 	).Scan(&a.Slug, &a.Title, &a.Description, &a.Content, &a.Published, &a.Modified)
 	if err != nil {
-		log.Printf("Query failed: %v", err)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		if errors.Is(err, sql.ErrNoRows) {
+			s.writeJSONError(w, http.StatusNotFound, "article not found")
+			return
+		}
+		s.logger.Error("query failed", "error", err)
+		s.writeJSONError(w, http.StatusInternalServerError, "Failed to query database")
 		return
 	}
 
-	json.NewEncoder(w).Encode(a)
+	s.writeJSON(w, http.StatusOK, a)
 }
 
 // handleUpdateArticleBySlug godoc
@@ -253,18 +243,15 @@ func (s *Server) handleGetArticleBySlug(w http.ResponseWriter, r *http.Request) 
 // @Security     AdminJWTAuth
 // @Router       /blog/articles/{slug} [patch]
 func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	slug := chi.URLParam(r, "slug")
 
 	// Input validation
 	if len(slug) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "slug is required"})
+		s.writeJSONError(w, http.StatusBadRequest, "slug is required")
 		return
 	}
 	if len(slug) > maxSlugLength {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("slug exceeds maximum length of %d characters", maxSlugLength)})
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("slug exceeds maximum length of %d characters", maxSlugLength))
 		return
 	}
 
@@ -272,8 +259,7 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 	var req updateArticleRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON body"})
+		s.writeJSONError(w, http.StatusBadRequest, "Invalid JSON body")
 		return
 	}
 	defer r.Body.Close()
@@ -281,37 +267,31 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 	// Input validation
 	if req.Title != nil {
 		if len(*req.Title) == 0 {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "title is required"})
+			s.writeJSONError(w, http.StatusBadRequest, "title is required")
 			return
 		}
 		if len(*req.Title) > maxTitleLength {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLength)})
+			s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLength))
 			return
 		}
 	}
 	if req.Description != nil {
 		if len(*req.Description) == 0 {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "description is required"})
+			s.writeJSONError(w, http.StatusBadRequest, "description is required")
 			return
 		}
 		if len(*req.Description) > maxDescriptionLength {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("description exceeds maximum length of %d characters", maxDescriptionLength)})
+			s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("description exceeds maximum length of %d characters", maxDescriptionLength))
 			return
 		}
 	}
 	if req.Content != nil {
 		if len(*req.Content) == 0 {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "content is required"})
+			s.writeJSONError(w, http.StatusBadRequest, "content is required")
 			return
 		}
 		if len(*req.Content) > maxContentLength {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("content exceeds maximum length of %d characters", maxContentLength)})
+			s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("content exceeds maximum length of %d characters", maxContentLength))
 			return
 		}
 	}
@@ -333,8 +313,7 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 	}
 
 	if len(queryParts) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "No fields provided for update"})
+		s.writeJSONError(w, http.StatusBadRequest, "No fields provided for update")
 		return
 	}
 
@@ -345,12 +324,12 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 	s.logger.Debug("SQL: " + renderSQL(query, args))
 	_, err = s.db.Exec(query, args...)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		s.logger.Error("failed to update article", "error", err)
+		s.writeJSONError(w, http.StatusInternalServerError, "Failed to update article")
 		return
 	}
 
-	json.NewEncoder(w).Encode(messageResponse{
+	s.writeJSON(w, http.StatusOK, messageResponse{
 		Message: "Article updated successfully",
 	})
 }
@@ -367,18 +346,15 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 // @Security     AdminJWTAuth
 // @Router       /blog/articles/{slug} [delete]
 func (s *Server) handleDeleteArticleBySlug(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	slug := chi.URLParam(r, "slug")
 
 	// Input validation
 	if len(slug) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "slug is required"})
+		s.writeJSONError(w, http.StatusBadRequest, "slug is required")
 		return
 	}
 	if len(slug) > maxSlugLength {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("slug exceeds maximum length of %d characters", maxSlugLength)})
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("slug exceeds maximum length of %d characters", maxSlugLength))
 		return
 	}
 
@@ -387,12 +363,12 @@ func (s *Server) handleDeleteArticleBySlug(w http.ResponseWriter, r *http.Reques
 	s.logger.Debug("SQL: " + renderSQL(deleteQuery, []any{slug}))
 	_, err := s.db.Exec(deleteQuery, slug)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		s.logger.Error("failed to delete article", "error", err)
+		s.writeJSONError(w, http.StatusInternalServerError, "Failed to delete article")
 		return
 	}
 
-	json.NewEncoder(w).Encode(messageResponse{
+	s.writeJSON(w, http.StatusOK, messageResponse{
 		Message: "Article deleted successfully",
 	})
 }

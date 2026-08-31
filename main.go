@@ -1,8 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"log"
+	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/jmuszka/larynx/internal/logging"
@@ -25,7 +31,7 @@ func splitCSV(raw string) []string {
 
 func Loadenv() {
 	if err := godotenv.Load(); err != nil {
-		logging.New(logging.Config{Level: logging.LevelInfo}).Fatal("error loading .env file", "error", err)
+		log.Fatalf("error loading .env file: %v", err)
 	}
 }
 
@@ -46,10 +52,13 @@ const version = "preview"
 func main() {
 	Loadenv()
 
-	logger := logging.New(logging.Config{
+	logger, err := logging.New(logging.Config{
 		Level:    logging.ParseLevel(os.Getenv("LOG_LEVEL")),
 		FilePath: os.Getenv("LOG_FILE"),
 	})
+	if err != nil {
+		log.Fatalf("failed to initialize logging: %v", err)
+	}
 	defer logger.Close()
 
 	adminJWTSecret := os.Getenv("ADMIN_JWT_SECRET")
@@ -84,6 +93,23 @@ func main() {
 	}
 
 	s := server.New(cfg)
-	logger.Info("listening", "addr", cfg.Addr)
-	logger.Fatal("server stopped", "error", s.ListenAndServe())
+
+	go func() {
+		logger.Info("listening", "addr", cfg.Addr)
+		if err := s.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Fatal("server stopped unexpectedly", "error", err)
+		}
+	}()
+
+	// Wait for a shutdown signal, then shut down gracefully.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
+
+	logger.Info("shutting down")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := s.Shutdown(shutdownCtx); err != nil {
+		logger.Error("graceful shutdown failed", "error", err)
+	}
 }

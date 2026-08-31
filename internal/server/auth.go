@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"crypto/subtle"
-	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -20,7 +19,7 @@ func (s *Server) bearerAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authz := r.Header.Get("Authorization")
 		if !strings.HasPrefix(authz, bearerPrefix) {
-			unauthorized(w)
+			s.unauthorized(w)
 			return
 		}
 
@@ -32,27 +31,23 @@ func (s *Server) bearerAuth(next http.Handler) http.Handler {
 			}
 		}
 
-		unauthorized(w)
+		s.unauthorized(w)
 	})
 }
 
-func unauthorized(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusUnauthorized)
-	json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+func (s *Server) unauthorized(w http.ResponseWriter) {
+	s.writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 }
 
-func adminUnauthorized(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusUnauthorized)
-	json.NewEncoder(w).Encode(map[string]string{"error": "invalid or missing admin token"})
+func (s *Server) adminUnauthorized(w http.ResponseWriter) {
+	s.writeJSONError(w, http.StatusUnauthorized, "invalid or missing admin token")
 }
 
 func (s *Server) adminJWTAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tokenStr := strings.TrimSpace(r.Header.Get("X-Admin-JWT"))
 		if tokenStr == "" {
-			adminUnauthorized(w)
+			s.adminUnauthorized(w)
 			return
 		}
 
@@ -64,13 +59,13 @@ func (s *Server) adminJWTAuth(next http.Handler) http.Handler {
 			jwt.WithExpirationRequired(),
 		)
 		if err != nil || !token.Valid {
-			adminUnauthorized(w)
+			s.adminUnauthorized(w)
 			return
 		}
 
 		claims, ok := token.Claims.(*jwt.RegisteredClaims)
 		if !ok || claims.Subject != s.cfg.AdminJWTSubject {
-			adminUnauthorized(w)
+			s.adminUnauthorized(w)
 			return
 		}
 
