@@ -48,6 +48,12 @@ type messageResponse struct {
 	Message string `json:"message"`
 }
 
+const (
+	maxTitleLength       = 200
+	maxDescriptionLength = 500
+	maxContentLength     = 100000
+)
+
 func (s *Server) blogRouter() http.Handler {
 	r := chi.NewRouter()
 
@@ -137,6 +143,22 @@ func (s *Server) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
+
+	if len(req.Title) > maxTitleLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLength)})
+		return
+	}
+	if len(req.Description) > maxDescriptionLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("description exceeds maximum length of %d characters", maxDescriptionLength)})
+		return
+	}
+	if len(req.Content) > maxContentLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("content exceeds maximum length of %d characters", maxContentLength)})
+		return
+	}
 
 	// Write new article to database
 	slug := strings.Join(strings.Split(strings.ToLower(req.Title), " "), "-")
