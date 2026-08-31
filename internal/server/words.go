@@ -116,7 +116,6 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 
 	records := make([]map[string]any, len(result.Records))
 	familySet := map[string]struct{}{}
-	family := make([]string, 0, len(familySet))
 
 	for i, record := range result.Records {
 		records[i] = record.AsMap()
@@ -134,12 +133,17 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 
 			if lang != "English" && lang != "Middle English" {
 				familySet[lang] = struct{}{}
-				family = append(family, lang)
 			}
 		}
 	}
 
-	family = append(family, "English")
+	familySet["English"] = struct{}{}
+
+	// Convert hash set to array
+	family := make([]string, 0, len(familySet))
+	for k := range familySet {
+		family = append(family, k)
+	}
 
 	// Get families
 	cypher = `
