@@ -144,6 +144,22 @@ func (s *Server) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	// Input validation
+	if len(req.Title) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "title is required"})
+		return
+	}
+	if len(req.Description) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "description is required"})
+		return
+	}
+	if len(req.Content) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "content is required"})
+		return
+	}
 	if len(req.Title) > maxTitleLength {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLength)})
