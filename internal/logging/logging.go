@@ -2,6 +2,7 @@ package logging
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -27,15 +28,17 @@ type Service struct {
 	file   *os.File
 }
 
-func New(cfg Config) *Service {
+func New(cfg Config) (*Service, error) {
 	var writers []io.Writer
 	writers = append(writers, os.Stdout)
 
+	var file *os.File
 	if cfg.FilePath != "" {
 		f, err := os.OpenFile(cfg.FilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			panic(err)
+			return nil, fmt.Errorf("logging: open file: %w", err)
 		}
+		file = f
 		writers = append(writers, f)
 	}
 
@@ -43,8 +46,7 @@ func New(cfg Config) *Service {
 		Level: cfg.Level,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			if a.Key == slog.LevelKey {
-				level := a.Value.Any().(slog.Level)
-				if level == LevelFatal {
+				if level, ok := a.Value.Any().(slog.Level); ok && level == LevelFatal {
 					a.Value = slog.StringValue("FATAL")
 				}
 			}
@@ -55,12 +57,7 @@ func New(cfg Config) *Service {
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
 
-	svc := &Service{logger: logger}
-	if cfg.FilePath != "" {
-		svc.file = writers[1].(*os.File)
-	}
-
-	return svc
+	return &Service{logger: logger, file: file}, nil
 }
 
 func ParseLevel(s string) Level {
@@ -100,6 +97,11 @@ func (s *Service) Fatal(msg string, args ...any) {
 	s.logger.Log(context.Background(), LevelFatal, msg, args...)
 	s.Close()
 	os.Exit(1)
+}
+
+// Logger returns the underlying slog logger.
+func (s *Service) Logger() *slog.Logger {
+	return s.logger
 }
 
 func (s *Service) Close() {

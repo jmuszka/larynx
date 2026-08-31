@@ -1,9 +1,10 @@
 package server
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	neturl "net/url"
 	"regexp"
@@ -66,8 +67,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	// Input validation
 	lang := r.URL.Query().Get("lang")
 	if len(lang) > maxLangLength {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("lang exceeds maximum length of %d characters", maxLangLength)})
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("lang exceeds maximum length of %d characters", maxLangLength))
 		return
 	}
 
@@ -79,13 +79,11 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	// Input validation
 	word := unescapeParam(r, "word")
 	if len(word) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "word is required"})
+		s.writeJSONError(w, http.StatusBadRequest, "word is required")
 		return
 	}
 	if len(word) > maxWordLength {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("word exceeds maximum length of %d characters", maxWordLength)})
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("word exceeds maximum length of %d characters", maxWordLength))
 		return
 	}
 
@@ -112,8 +110,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
 		s.logger.Error("failed to execute etymology query", "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "failed to execute query"})
+		s.writeJSONError(w, http.StatusInternalServerError, "failed to execute query")
 		return
 	}
 
@@ -193,8 +190,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
 		s.logger.Error("failed to execute families query", "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "failed to execute query"})
+		s.writeJSONError(w, http.StatusInternalServerError, "failed to execute query")
 		return
 	}
 
@@ -225,7 +221,8 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		neo4j.ExecuteQueryWithReadersRouting(), // Routes optimization for read-only query
 	)
 	if err != nil {
-		fmt.Printf("failed to execute query: %v", err)
+		s.logger.Error("failed to execute geojson query", "error", err)
+		s.writeJSONError(w, http.StatusInternalServerError, "failed to execute query")
 		return
 	}
 
@@ -261,7 +258,12 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Write to cache so that future queries are quick
-	encoded, _ := json.Marshal(response)
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		s.logger.Error("failed to marshal response", "error", err)
+		s.writeJSONError(w, http.StatusInternalServerError, "failed to encode response")
+		return
+	}
 	w.Write(encoded)
 	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
@@ -287,26 +289,23 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 
 	lang := r.URL.Query().Get("lang")
 	if len(lang) > maxLangLength {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("lang exceeds maximum length of %d characters", maxLangLength)})
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("lang exceeds maximum length of %d characters", maxLangLength))
 		return
 	}
 	if lang != "" && lang != "English" {
 		s.logger.Warn("history not implemented for non-english")
-		json.NewEncoder(w).Encode(map[string]string{"error": "history not implemented for non-english"})
+		s.writeJSONError(w, http.StatusBadRequest, "history not implemented for non-english")
 		return
 	}
 
 	// Input validation
 	word := unescapeParam(r, "word")
 	if len(word) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "word is required"})
+		s.writeJSONError(w, http.StatusBadRequest, "word is required")
 		return
 	}
 	if len(word) > maxWordLength {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("word exceeds maximum length of %d characters", maxWordLength)})
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("word exceeds maximum length of %d characters", maxWordLength))
 		return
 	}
 
@@ -319,9 +318,8 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 
 	req, err := http.NewRequestWithContext(r.Context(), "GET", "https://www.etymonline.com/search?q="+neturl.QueryEscape(word), nil)
 	if err != nil {
-		log.Printf("Failed to build request: %v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		s.logger.Error("failed to build request", "error", err)
+		s.writeJSONError(w, http.StatusInternalServerError, "failed to build request")
 		return
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0")
@@ -329,18 +327,16 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		log.Printf("Failed to fetch etymology page: %v", err)
-		w.WriteHeader(http.StatusBadGateway)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		s.logger.Error("failed to fetch etymology page", "error", err)
+		s.writeJSONError(w, http.StatusBadGateway, "failed to fetch etymology source")
 		return
 	}
 	defer resp.Body.Close()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
-		log.Printf("Failed to parse HTML: %v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		s.logger.Error("failed to parse HTML", "error", err)
+		s.writeJSONError(w, http.StatusInternalServerError, "failed to parse etymology source")
 		return
 	}
 
@@ -407,8 +403,8 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 		raw.String(), word,
 	))
 	if err != nil {
-		log.Printf("LLM formatting failed: %v", err)
-		json.NewEncoder(w).Encode(map[string]any{"word": word, "results": entries})
+		s.logger.Error("LLM formatting failed", "error", err)
+		s.writeJSON(w, http.StatusOK, map[string]any{"word": word, "results": entries})
 		return
 	}
 
@@ -418,7 +414,12 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Write to cache so that future queries are quick
-	encoded, _ := json.Marshal(response)
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		s.logger.Error("failed to marshal response", "error", err)
+		s.writeJSONError(w, http.StatusInternalServerError, "failed to encode response")
+		return
+	}
 	w.Write(encoded)
 	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
@@ -431,8 +432,7 @@ func entryMatchesWord(entryWord, searchWord string) bool {
 
 // TODO: implement
 func (s *Server) handleGetDefinition(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	s.writeJSON(w, http.StatusOK, map[string]string{
 		"status": "Not implemented",
 	})
 }
@@ -462,13 +462,11 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 
 	// Input validation
 	if len(prefix) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "prefix is required"})
+		s.writeJSONError(w, http.StatusBadRequest, "prefix is required")
 		return
 	}
 	if len(prefix) > maxWordLength {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("prefix exceeds maximum length of %d characters", maxWordLength)})
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("prefix exceeds maximum length of %d characters", maxWordLength))
 		return
 	}
 
@@ -488,8 +486,7 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 		neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
 		s.logger.Error("failed to execute search query", "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "failed to execute query"})
+		s.writeJSONError(w, http.StatusInternalServerError, "failed to execute query")
 		return
 	}
 
@@ -503,10 +500,13 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	json.NewEncoder(w).Encode(terms)
-
 	// Write to cache so that future queries are quick
-	encoded, _ := json.Marshal(terms)
+	encoded, err := json.Marshal(terms)
+	if err != nil {
+		s.logger.Error("failed to marshal response", "error", err)
+		s.writeJSONError(w, http.StatusInternalServerError, "failed to encode response")
+		return
+	}
 	w.Write(encoded)
 	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
@@ -539,26 +539,23 @@ func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
 
 	lang := r.URL.Query().Get("lang")
 	if len(lang) > maxLangLength {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("lang exceeds maximum length of %d characters", maxLangLength)})
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("lang exceeds maximum length of %d characters", maxLangLength))
 		return
 	}
 	if lang != "" && lang != "English" {
 		s.logger.Warn("ipa not implemented for non-english")
-		json.NewEncoder(w).Encode(map[string]string{"error": "ipa not implemented for non-english"})
+		s.writeJSONError(w, http.StatusBadRequest, "ipa not implemented for non-english")
 		return
 	}
 
 	// Input validation
 	word := unescapeParam(r, "word")
 	if len(word) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "word is required"})
+		s.writeJSONError(w, http.StatusBadRequest, "word is required")
 		return
 	}
 	if len(word) > maxWordLength {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("word exceeds maximum length of %d characters", maxWordLength)})
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("word exceeds maximum length of %d characters", maxWordLength))
 		return
 	}
 
@@ -580,8 +577,12 @@ func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
 		word,
 	).Scan(&ipa)
 	if err != nil {
-		log.Printf("Query failed: %v", err)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		if errors.Is(err, sql.ErrNoRows) {
+			s.writeJSONError(w, http.StatusNotFound, "ipa not found")
+			return
+		}
+		s.logger.Error("query failed", "error", err)
+		s.writeJSONError(w, http.StatusInternalServerError, "failed to query database")
 		return
 	}
 
@@ -590,7 +591,12 @@ func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Write to cache so that future queries are quick
-	encoded, _ := json.Marshal(response)
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		s.logger.Error("failed to marshal response", "error", err)
+		s.writeJSONError(w, http.StatusInternalServerError, "failed to encode response")
+		return
+	}
 	w.Write(encoded)
 	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
