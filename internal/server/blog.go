@@ -52,6 +52,7 @@ const (
 	maxTitleLength       = 200
 	maxDescriptionLength = 500
 	maxContentLength     = 100000
+	maxSlugLength        = 200
 )
 
 func (s *Server) blogRouter() http.Handler {
@@ -206,6 +207,18 @@ func (s *Server) handleGetArticleBySlug(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 
 	slug := chi.URLParam(r, "slug")
+
+	// Input validation
+	if len(slug) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "slug is required"})
+		return
+	}
+	if len(slug) > maxSlugLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("slug exceeds maximum length of %d characters", maxSlugLength)})
+		return
+	}
 
 	var a article
 
