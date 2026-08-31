@@ -256,6 +256,18 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 	slug := chi.URLParam(r, "slug")
 
+	// Input validation
+	if len(slug) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "slug is required"})
+		return
+	}
+	if len(slug) > maxSlugLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("slug exceeds maximum length of %d characters", maxSlugLength)})
+		return
+	}
+
 	// Parse input
 	var req updateArticleRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
@@ -265,6 +277,44 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	defer r.Body.Close()
+
+	// Input validation
+	if req.Title != nil {
+		if len(*req.Title) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "title is required"})
+			return
+		}
+		if len(*req.Title) > maxTitleLength {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLength)})
+			return
+		}
+	}
+	if req.Description != nil {
+		if len(*req.Description) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "description is required"})
+			return
+		}
+		if len(*req.Description) > maxDescriptionLength {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("description exceeds maximum length of %d characters", maxDescriptionLength)})
+			return
+		}
+	}
+	if req.Content != nil {
+		if len(*req.Content) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "content is required"})
+			return
+		}
+		if len(*req.Content) > maxContentLength {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("content exceeds maximum length of %d characters", maxContentLength)})
+			return
+		}
+	}
 
 	var queryParts []string
 	var args []any
