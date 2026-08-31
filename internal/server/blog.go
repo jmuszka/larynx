@@ -48,6 +48,13 @@ type messageResponse struct {
 	Message string `json:"message"`
 }
 
+const (
+	maxTitleLength       = 200
+	maxDescriptionLength = 500
+	maxContentLength     = 100000
+	maxSlugLength        = 200
+)
+
 func (s *Server) blogRouter() http.Handler {
 	r := chi.NewRouter()
 
@@ -138,6 +145,38 @@ func (s *Server) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	// Input validation
+	if len(req.Title) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "title is required"})
+		return
+	}
+	if len(req.Description) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "description is required"})
+		return
+	}
+	if len(req.Content) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "content is required"})
+		return
+	}
+	if len(req.Title) > maxTitleLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLength)})
+		return
+	}
+	if len(req.Description) > maxDescriptionLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("description exceeds maximum length of %d characters", maxDescriptionLength)})
+		return
+	}
+	if len(req.Content) > maxContentLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("content exceeds maximum length of %d characters", maxContentLength)})
+		return
+	}
+
 	// Write new article to database
 	slug := strings.Join(strings.Split(strings.ToLower(req.Title), " "), "-")
 	const insertQuery = "INSERT INTO articles (title, description, content, slug) VALUES (?, ?, ?, ?)"
@@ -168,6 +207,18 @@ func (s *Server) handleGetArticleBySlug(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 
 	slug := chi.URLParam(r, "slug")
+
+	// Input validation
+	if len(slug) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "slug is required"})
+		return
+	}
+	if len(slug) > maxSlugLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("slug exceeds maximum length of %d characters", maxSlugLength)})
+		return
+	}
 
 	var a article
 
@@ -205,6 +256,18 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 	slug := chi.URLParam(r, "slug")
 
+	// Input validation
+	if len(slug) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "slug is required"})
+		return
+	}
+	if len(slug) > maxSlugLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("slug exceeds maximum length of %d characters", maxSlugLength)})
+		return
+	}
+
 	// Parse input
 	var req updateArticleRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
@@ -214,6 +277,44 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	defer r.Body.Close()
+
+	// Input validation
+	if req.Title != nil {
+		if len(*req.Title) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "title is required"})
+			return
+		}
+		if len(*req.Title) > maxTitleLength {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLength)})
+			return
+		}
+	}
+	if req.Description != nil {
+		if len(*req.Description) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "description is required"})
+			return
+		}
+		if len(*req.Description) > maxDescriptionLength {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("description exceeds maximum length of %d characters", maxDescriptionLength)})
+			return
+		}
+	}
+	if req.Content != nil {
+		if len(*req.Content) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "content is required"})
+			return
+		}
+		if len(*req.Content) > maxContentLength {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("content exceeds maximum length of %d characters", maxContentLength)})
+			return
+		}
+	}
 
 	var queryParts []string
 	var args []any
@@ -268,6 +369,18 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleDeleteArticleBySlug(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	slug := chi.URLParam(r, "slug")
+
+	// Input validation
+	if len(slug) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "slug is required"})
+		return
+	}
+	if len(slug) > maxSlugLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("slug exceeds maximum length of %d characters", maxSlugLength)})
+		return
+	}
 
 	// Delete article from database
 	const deleteQuery = "DELETE FROM articles WHERE slug = ?"

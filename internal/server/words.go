@@ -43,6 +43,12 @@ type feature struct {
 	Geometry   map[string]any `json:"geometry"`
 }
 
+// Note: in the Wikitionary dataset, the longest word was empirically measured at 204 characters and longest language at 58 characters
+const (
+	maxWordLength = 250
+	maxLangLength = 100
+)
+
 // handleGetEtymology godoc
 // @Summary      Get a word's etymology graph
 // @Description  Returns the graph of ancestor words, their language families, and a GeoJSON map of where those languages are spoken.
@@ -57,10 +63,30 @@ type feature struct {
 func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// English is the default language
+	// Input validation
 	lang := r.URL.Query().Get("lang")
+	if len(lang) > maxLangLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("lang exceeds maximum length of %d characters", maxLangLength)})
+		return
+	}
+
+	// English is the default language
 	if lang == "" {
 		lang = "English"
+	}
+
+	// Input validation
+	word := unescapeParam(r, "word")
+	if len(word) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "word is required"})
+		return
+	}
+	if len(word) > maxWordLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("word exceeds maximum length of %d characters", maxWordLength)})
+		return
 	}
 
 	// Check if response exists in cache
@@ -77,7 +103,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		RETURN path
 	`
 	params := map[string]any{
-		"word": unescapeParam(r, "word"),
+		"word": word,
 		"lang": lang,
 	}
 	s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
@@ -260,9 +286,27 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	lang := r.URL.Query().Get("lang")
+	if len(lang) > maxLangLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("lang exceeds maximum length of %d characters", maxLangLength)})
+		return
+	}
 	if lang != "" && lang != "English" {
 		s.logger.Warn("history not implemented for non-english")
 		json.NewEncoder(w).Encode(map[string]string{"error": "history not implemented for non-english"})
+		return
+	}
+
+	// Input validation
+	word := unescapeParam(r, "word")
+	if len(word) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "word is required"})
+		return
+	}
+	if len(word) > maxWordLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("word exceeds maximum length of %d characters", maxWordLength)})
 		return
 	}
 
@@ -271,11 +315,6 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		w.Write([]byte(val))
 		return
-	}
-
-	word := chi.URLParam(r, "word")
-	if decoded, err := neturl.PathUnescape(word); err == nil {
-		word = decoded
 	}
 
 	req, err := http.NewRequestWithContext(r.Context(), "GET", "https://www.etymonline.com/search?q="+neturl.QueryEscape(word), nil)
@@ -421,6 +460,18 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 	// Parse GET parameters
 	prefix := r.URL.Query().Get("prefix")
 
+	// Input validation
+	if len(prefix) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "prefix is required"})
+		return
+	}
+	if len(prefix) > maxWordLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("prefix exceeds maximum length of %d characters", maxWordLength)})
+		return
+	}
+
 	// Construct Cypher query
 	const query = `
 		MATCH (n:Word { lang: 'English' })
@@ -487,9 +538,27 @@ func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	lang := r.URL.Query().Get("lang")
+	if len(lang) > maxLangLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("lang exceeds maximum length of %d characters", maxLangLength)})
+		return
+	}
 	if lang != "" && lang != "English" {
 		s.logger.Warn("ipa not implemented for non-english")
 		json.NewEncoder(w).Encode(map[string]string{"error": "ipa not implemented for non-english"})
+		return
+	}
+
+	// Input validation
+	word := unescapeParam(r, "word")
+	if len(word) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "word is required"})
+		return
+	}
+	if len(word) > maxWordLength {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("word exceeds maximum length of %d characters", maxWordLength)})
 		return
 	}
 
@@ -500,11 +569,6 @@ func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.logger.Error("cache lookup failed", "error", err)
-
-	word := chi.URLParam(r, "word")
-	if decoded, err := neturl.PathUnescape(word); err == nil {
-		word = decoded
-	}
 
 	var ipa string
 
