@@ -82,7 +82,9 @@ func (s *Server) handleGetArticles(w http.ResponseWriter, r *http.Request) {
 	s.logger.Debug("SQL: " + sqlQuery)
 	rows, err := s.db.Query(sqlQuery)
 	if err != nil {
-		log.Fatalf("Query failed: %v", err)
+		s.logger.Error("query failed", "error", err)
+		http.Error(w, `{"error": "Failed to query database"}`, http.StatusInternalServerError)
+		return
 	}
 	defer rows.Close()
 

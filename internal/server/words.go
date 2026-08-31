@@ -85,7 +85,10 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		params, neo4j.EagerResultTransformer,
 		neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
-		panic(err)
+		s.logger.Error("failed to execute etymology query", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to execute query"})
+		return
 	}
 
 	records := make([]map[string]any, len(result.Records))
@@ -95,10 +98,16 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	for i, record := range result.Records {
 		records[i] = record.AsMap()
 
-		path := record.AsMap()["path"].(neo4j.Path)
+		path, ok := record.AsMap()["path"].(neo4j.Path)
+		if !ok {
+			continue
+		}
 
 		for _, node := range path.Nodes {
-			lang := node.Props["lang"].(string)
+			lang, ok := node.Props["lang"].(string)
+			if !ok {
+				continue
+			}
 
 			if lang != "English" && lang != "Middle English" {
 				familySet[lang] = struct{}{}
@@ -157,15 +166,24 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		params, neo4j.EagerResultTransformer,
 		neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
-		panic(err)
+		s.logger.Error("failed to execute families query", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to execute query"})
+		return
 	}
 
-	rawList, _ := result.Records[0].Get("branches")
-	branches := make([]string, 0, len(rawList.([]interface{})))
-	for _, v := range rawList.([]interface{}) {
-		branches = append(branches, v.(string))
+	branches := []string{}
+	if len(result.Records) > 0 {
+		if rawList, ok := result.Records[0].Get("branches"); ok {
+			if list, ok := rawList.([]interface{}); ok {
+				for _, v := range list {
+					if s, ok := v.(string); ok {
+						branches = append(branches, s)
+					}
+				}
+			}
+		}
 	}
-	fmt.Println(branches)
 
 	/* Get flat geojson polygons */
 	cypher = `MATCH (l:Language) WHERE ANY(prefix IN $prefixes WHERE l.name CONTAINS prefix) RETURN l.name AS name, l.geometryJSON AS json`
@@ -418,7 +436,10 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 		searchParams, neo4j.EagerResultTransformer,
 		neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
-		panic(err)
+		s.logger.Error("failed to execute search query", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to execute query"})
+		return
 	}
 
 	// Package search results into an array
