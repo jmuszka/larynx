@@ -152,7 +152,9 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		langNames = append(langNames, k)
 	}
 
-	// Get language family lineages
+	// Get the family hierarchy. For each target family, return the lineage of
+	// branching points (nodes that are ancestors of at least two targets) plus
+	// the target itself. Intermediate monotypic nodes are pruned in the query.
 	cypher = `
 		UNWIND $langs AS langName
 		MATCH (l:Language)
@@ -167,7 +169,11 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		UNWIND targets AS target
 		MATCH path = (root:Family)-[:PARENT_OF*0..]->(target)
 		WHERE NOT (root)<-[:PARENT_OF]-()
-		RETURN [n IN nodes(path) WHERE coalesce(n.ignore, false) = false | n.name] AS lineage
+		WITH target, nodes(path) AS ns, targets
+		RETURN [n IN ns
+			WHERE coalesce(n.ignore, false) = false
+				AND (n = target OR size([(n)-[:PARENT_OF*0..]->(t) WHERE t IN targets | t]) >= 2)
+			| n.name] AS lineage
 	`
 	params = map[string]any{
 		"langs": langNames,
@@ -245,12 +251,12 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]any{
-		// "graph":      records,
+		"graph":      records,
 		"familyTree": familyTree,
-		// "geojson": map[string]any{
-		//	"type":     "FeatureCollection",
-		//	"features": features,
-		//},
+		"geojson": map[string]any{
+			"type":     "FeatureCollection",
+			"features": features,
+		},
 	}
 
 	// Write to cache so that future queries are quick
