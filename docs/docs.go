@@ -561,11 +561,8 @@ const docTemplate = `{
         "server.etymologyResponse": {
             "type": "object",
             "properties": {
-                "family": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
+                "familyTree": {
+                    "$ref": "#/definitions/server.familyNode"
                 },
                 "geojson": {
                     "$ref": "#/definitions/server.geoJSON"
@@ -576,6 +573,26 @@ const docTemplate = `{
                         "type": "object",
                         "additionalProperties": {}
                     }
+                }
+            }
+        },
+        "server.familyNode": {
+            "type": "object",
+            "properties": {
+                "children": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.familyNode"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "integer"
                 }
             }
         },

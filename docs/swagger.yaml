@@ -46,10 +46,8 @@ definitions:
     type: object
   server.etymologyResponse:
     properties:
-      family:
-        items:
-          type: string
-        type: array
+      familyTree:
+        $ref: '#/definitions/server.familyNode'
       geojson:
         $ref: '#/definitions/server.geoJSON'
       graph:
@@ -57,6 +55,19 @@ definitions:
           additionalProperties: {}
           type: object
         type: array
+    type: object
+  server.familyNode:
+    properties:
+      children:
+        items:
+          $ref: '#/definitions/server.familyNode'
+        type: array
+      id:
+        type: string
+      name:
+        type: string
+      value:
+        type: integer
     type: object
   server.feature:
     properties:

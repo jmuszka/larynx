@@ -28,9 +28,16 @@ func (s *Server) wordsRouter() http.Handler {
 }
 
 type etymologyResponse struct {
-	Graph   []map[string]any `json:"graph"`
-	Family  []string         `json:"family"`
-	GeoJSON geoJSON          `json:"geojson"`
+	Graph      []map[string]any `json:"graph"`
+	FamilyTree *familyNode      `json:"familyTree"`
+	GeoJSON    geoJSON          `json:"geojson"`
+}
+
+type familyNode struct {
+	ID       string        `json:"id"`
+	Name     string        `json:"name"`
+	Value    int           `json:"value"`
+	Children []*familyNode `json:"children,omitempty"`
 }
 
 type geoJSON struct {
@@ -140,53 +147,36 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	familySet["English"] = struct{}{}
 
 	// Convert hash set to array
-	family := make([]string, 0, len(familySet))
+	langNames := make([]string, 0, len(familySet))
 	for k := range familySet {
-		family = append(family, k)
+		langNames = append(langNames, k)
 	}
 
-	// Get families
+	// Get the family hierarchy. For each target family, return the lineage of
+	// branching points (nodes that are ancestors of at least two targets) plus
+	// the target itself. Intermediate monotypic nodes are pruned in the query.
 	cypher = `
 		UNWIND $langs AS langName
 		MATCH (l:Language)
 		WHERE l.name CONTAINS langName
 		WITH collect(DISTINCT l.glottocode) AS codes
 
-
 		UNWIND codes AS code
-		MATCH (n:Family)
-		WHERE n.name CONTAINS '[' + code + ']'
-		WITH collect(DISTINCT n) AS targets
-		
-		UNWIND range(0, size(targets) - 2) AS i
-		UNWIND range(i + 1, size(targets) - 1) AS j
-		WITH targets[i] AS a, targets[j] AS b
-		
-		MATCH path1 = (lca:Family)-[:PARENT_OF*0..]->(a)
-		MATCH path2 = (lca)-[:PARENT_OF*0..]->(b)
-		WHERE coalesce(lca.ignore, false) = false
-		WITH a, b, lca, length(path1) + length(path2) AS totalDistance
-		ORDER BY a.name, b.name, totalDistance ASC
-		WITH a, b, collect(lca)[0] AS lca
-		
-		MATCH pathA = (lca)-[:PARENT_OF*0..]->(a)
-		WITH a, b, lca, [x IN nodes(pathA) WHERE x <> lca] AS descA
-		WITH a, b, lca, [x IN descA WHERE coalesce(x.ignore, false) = false][0] AS foundBranchA
+		MATCH (f:Family)
+		WHERE f.name CONTAINS '[' + code + ']'
+		WITH collect(DISTINCT f) AS targets
 
-		MATCH pathB = (lca)-[:PARENT_OF*0..]->(b)
-		WITH a, b, lca, foundBranchA, [x IN nodes(pathB) WHERE x <> lca] AS descB
-		WITH a, b, lca, foundBranchA, [x IN descB WHERE coalesce(x.ignore, false) = false][0] AS foundBranchB
-		
-		WITH coalesce(foundBranchA, lca) AS branchA, coalesce(foundBranchB, lca) AS branchB
-		
-		WITH collect(branchA) + collect(branchB) AS allBranches
-		UNWIND allBranches AS branch
-		WITH DISTINCT branch
-		WHERE branch IS NOT NULL
-		RETURN collect(branch.name) AS branches
+		UNWIND targets AS target
+		MATCH path = (root:Family)-[:PARENT_OF*0..]->(target)
+		WHERE NOT (root)<-[:PARENT_OF]-()
+		WITH target, nodes(path) AS ns, targets
+		RETURN [n IN ns
+			WHERE coalesce(n.ignore, false) = false
+				AND (n = target OR size([(n)-[:PARENT_OF*0..]->(t) WHERE t IN targets | t]) >= 2)
+			| n.name] AS lineage
 	`
 	params = map[string]any{
-		"langs": family,
+		"langs": langNames,
 	}
 	s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
 	result, err = neo4j.ExecuteQuery(r.Context(), s.driver, cypher,
@@ -198,22 +188,30 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	branches := []string{}
-	if len(result.Records) > 0 {
-		if rawList, ok := result.Records[0].Get("branches"); ok {
-			if list, ok := rawList.([]interface{}); ok {
-				for _, v := range list {
-					if s, ok := v.(string); ok {
-						branches = append(branches, s)
-					}
-				}
+	lineages := make([][]string, 0, len(result.Records))
+	for _, record := range result.Records {
+		raw, ok := record.Get("lineage")
+		if !ok {
+			continue
+		}
+		list, ok := raw.([]interface{})
+		if !ok {
+			continue
+		}
+		lineage := make([]string, 0, len(list))
+		for _, v := range list {
+			if name, ok := v.(string); ok {
+				lineage = append(lineage, name)
 			}
 		}
+		lineages = append(lineages, lineage)
 	}
+
+	familyTree := buildFamilyTree(lineages)
 
 	/* Get flat geojson polygons */
 	cypher = `MATCH (l:Language) WHERE ANY(prefix IN $prefixes WHERE l.name CONTAINS prefix) RETURN l.name AS name, l.geometryJSON AS json`
-	params = map[string]any{"prefixes": family}
+	params = map[string]any{"prefixes": langNames}
 
 	s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
 	result, err = neo4j.ExecuteQuery(
@@ -253,8 +251,8 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]any{
-		"graph":  records,
-		"family": branches,
+		"graph":      records,
+		"familyTree": familyTree,
 		"geojson": map[string]any{
 			"type":     "FeatureCollection",
 			"features": features,
@@ -432,6 +430,58 @@ func entryMatchesWord(entryWord, searchWord string) bool {
 	clean := strings.TrimSpace(strings.SplitN(entryWord, "(", 2)[0])
 	clean = strings.TrimRight(clean, " ")
 	return strings.EqualFold(clean, searchWord)
+}
+
+// buildFamilyTree merges root-to-leaf lineages into a nested forest rooted at a
+// synthetic "root" node. Each distinct top-level ancestor becomes a child of the
+// root, and every node's value is the number of descendant leaves.
+func buildFamilyTree(lineages [][]string) *familyNode {
+	root := &familyNode{ID: "root", Name: "root"}
+	for _, lineage := range lineages {
+		if len(lineage) == 0 {
+			continue
+		}
+		parent := root
+		for _, name := range lineage {
+			var child *familyNode
+			for _, c := range parent.Children {
+				if c.ID == name {
+					child = c
+					break
+				}
+			}
+			if child == nil {
+				child = &familyNode{ID: name, Name: familyDisplayName(name)}
+				parent.Children = append(parent.Children, child)
+			}
+			parent = child
+		}
+	}
+	setFamilyValues(root)
+	return root
+}
+
+// setFamilyValues assigns each node a value equal to its leaf count.
+func setFamilyValues(n *familyNode) int {
+	if len(n.Children) == 0 {
+		n.Value = 1
+		return 1
+	}
+	total := 0
+	for _, c := range n.Children {
+		total += setFamilyValues(c)
+	}
+	n.Value = total
+	return total
+}
+
+// familyDisplayName strips the bracketed glottocode suffix (e.g. " [indo1319]")
+// from a Family name for display purposes.
+func familyDisplayName(name string) string {
+	if i := strings.Index(name, " ["); i >= 0 {
+		return name[:i]
+	}
+	return name
 }
 
 // TODO: implement
