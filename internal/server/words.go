@@ -8,6 +8,7 @@ import (
 	"net/http"
 	neturl "net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -64,6 +65,7 @@ const (
 // @Produce      json
 // @Param        word  path      string  true  "The word to look up"
 // @Param        lang  query     string  false "Language of the word"  default(English)
+// @Param        geojson  query  string  false "Include geojson in the response"  default(true)
 // @Success      200   {object}  etymologyResponse
 // @Failure      500   {object}  map[string]string
 // @Security     BearerAuth
@@ -81,6 +83,15 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	// English is the default language
 	if lang == "" {
 		lang = "English"
+	}
+
+	// Geojson is included by default, but can be disabled to skip the
+	// expensive geometry query and shrink the response payload.
+	includeGeojson := true
+	if v := r.URL.Query().Get("geojson"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			includeGeojson = b
+		}
 	}
 
 	// Input validation
@@ -209,54 +220,60 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 
 	familyTree := buildFamilyTree(lineages)
 
-	/* Get flat geojson polygons */
-	cypher = `MATCH (l:Language) WHERE ANY(prefix IN $prefixes WHERE l.name CONTAINS prefix) RETURN l.name AS name, l.geometryJSON AS json`
-	params = map[string]any{"prefixes": langNames}
+	var geojson any
 
-	s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
-	result, err = neo4j.ExecuteQuery(
-		r.Context(),
-		s.driver,
-		cypher,
-		params,
-		neo4j.EagerResultTransformer,           // Safely packs records into memory
-		neo4j.ExecuteQueryWithReadersRouting(), // Routes optimization for read-only query
-	)
-	if err != nil {
-		s.logger.Error("failed to execute geojson query", "error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "failed to execute query")
-		return
-	}
+	if includeGeojson {
+		/* Get flat geojson polygons */
+		cypher = `MATCH (l:Language) WHERE ANY(prefix IN $prefixes WHERE l.name CONTAINS prefix) RETURN l.name AS name, l.geometryJSON AS json`
+		params = map[string]any{"prefixes": langNames}
 
-	features := make([]any, 0, len(result.Records))
-	for _, record := range result.Records {
-		name, _ := record.Get("name")
-		nameStr, _ := name.(string)
-
-		geometryJSON, _ := record.Get("json")
-		geometryStr, _ := geometryJSON.(string)
-
-		var geometry any
-		if err := json.Unmarshal([]byte(geometryStr), &geometry); err != nil {
-			continue
+		s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
+		result, err = neo4j.ExecuteQuery(
+			r.Context(),
+			s.driver,
+			cypher,
+			params,
+			neo4j.EagerResultTransformer,           // Safely packs records into memory
+			neo4j.ExecuteQueryWithReadersRouting(), // Routes optimization for read-only query
+		)
+		if err != nil {
+			s.logger.Error("failed to execute geojson query", "error", err)
+			s.writeJSONError(w, http.StatusInternalServerError, "failed to execute query")
+			return
 		}
 
-		features = append(features, map[string]any{
-			"type": "Feature",
-			"properties": map[string]any{
-				"name": nameStr,
-			},
-			"geometry": geometry,
-		})
+		features := make([]any, 0, len(result.Records))
+		for _, record := range result.Records {
+			name, _ := record.Get("name")
+			nameStr, _ := name.(string)
+
+			geometryJSON, _ := record.Get("json")
+			geometryStr, _ := geometryJSON.(string)
+
+			var geometry any
+			if err := json.Unmarshal([]byte(geometryStr), &geometry); err != nil {
+				continue
+			}
+
+			features = append(features, map[string]any{
+				"type": "Feature",
+				"properties": map[string]any{
+					"name": nameStr,
+				},
+				"geometry": geometry,
+			})
+		}
+
+		geojson = map[string]any{
+			"type":     "FeatureCollection",
+			"features": features,
+		}
 	}
 
 	response := map[string]any{
 		"graph":      records,
 		"familyTree": familyTree,
-		"geojson": map[string]any{
-			"type":     "FeatureCollection",
-			"features": features,
-		},
+		"geojson":    geojson,
 	}
 
 	// Write to cache so that future queries are quick

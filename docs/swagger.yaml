@@ -351,6 +351,11 @@ paths:
         in: query
         name: lang
         type: string
+      - default: "true"
+        description: Include geojson in the response
+        in: query
+        name: geojson
+        type: string
       produces:
       - application/json
       responses:

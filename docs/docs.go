@@ -367,6 +367,13 @@ const docTemplate = `{
                         "description": "Language of the word",
                         "name": "lang",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "true",
+                        "description": "Include geojson in the response",
+                        "name": "geojson",
+                        "in": "query"
                     }
                 ],
                 "responses": {
