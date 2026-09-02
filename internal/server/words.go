@@ -150,13 +150,9 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			if lang != "English" && lang != "Middle English" {
-				familySet[lang] = struct{}{}
-			}
+			familySet[lang] = struct{}{}
 		}
 	}
-
-	familySet["English"] = struct{}{}
 
 	// Convert hash set to array
 	langNames := make([]string, 0, len(familySet))
@@ -164,18 +160,17 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		langNames = append(langNames, k)
 	}
 
-	// Get the family hierarchy. For each target family, return the lineage of
-	// branching points (nodes that are ancestors of at least two targets) plus
-	// the target itself. Intermediate monotypic nodes are pruned in the query.
+	// Get the family hierarchy. Each matched language sits directly under its
+	// immediate family (Family -[:PARENT_OF]-> Language), so collect those
+	// immediate families as the targets. For each target, return its lineage
+	// consisting of the target itself plus every branching point: a node whose
+	// children lead to at least two distinct targets (i.e. the LCAs). Nodes
+	// that only lead to a single target are pruned, so the lineage never walks
+	// above the highest LCA. Language nodes never appear.
 	cypher = `
 		UNWIND $langs AS langName
-		MATCH (l:Language)
+		MATCH (f:Family)-[:PARENT_OF]->(l:Language)
 		WHERE l.name CONTAINS langName
-		WITH collect(DISTINCT l.glottocode) AS codes
-
-		UNWIND codes AS code
-		MATCH (f:Family)
-		WHERE f.name CONTAINS '[' + code + ']'
 		WITH collect(DISTINCT f) AS targets
 
 		UNWIND targets AS target
@@ -183,8 +178,8 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		WHERE NOT (root)<-[:PARENT_OF]-()
 		WITH target, nodes(path) AS ns, targets
 		RETURN [n IN ns
-			WHERE coalesce(n.ignore, false) = false
-				AND (n = target OR size([(n)-[:PARENT_OF*0..]->(t) WHERE t IN targets | t]) >= 2)
+			WHERE n = target OR size([(n)-[:PARENT_OF]->(c)
+				WHERE size([(c)-[:PARENT_OF*0..]->(t) WHERE t IN targets | t]) > 0 | c]) >= 2
 			| n.name] AS lineage
 	`
 	params = map[string]any{
