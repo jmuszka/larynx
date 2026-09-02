@@ -55,6 +55,15 @@ const (
 	maxLangLength = 100
 )
 
+// Heatmap diffusion weights. Tier 1 (the ancestor language's own region) is
+// hottest; tier 2 (immediate-family descendants) and tier 3 (parent-family
+// descendants) are progressively cooler. Counts sum across overlapping tiers.
+const (
+	tier1Weight = 3
+	tier2Weight = 2
+	tier3Weight = 1
+)
+
 // handleGetEtymology godoc
 // @Summary      Get a word's etymology graph
 // @Description  Returns the graph of ancestor words, their language families, and a GeoJSON map of where those languages are spoken.
@@ -218,9 +227,36 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	var geojson any
 
 	if includeGeojson {
-		/* Get flat geojson polygons */
-		cypher = `MATCH (l:Language) WHERE ANY(prefix IN $prefixes WHERE l.name CONTAINS prefix) RETURN l.name AS name, l.geometryJSON AS json`
-		params = map[string]any{"prefixes": langNames}
+		// Heatmap diffusion. For each ancestor language, emit its own region
+		// (tier 1), every descendant of its immediate family (tier 2), and every
+		// descendant of that family's parent (tier 3). Tiers carry descending
+		// weights, and counts are summed per glottocode so overlapping polygons
+		// render hotter while the payload stays small.
+		cypher = `
+			CALL {
+				UNWIND $langs AS langName
+				MATCH (l:Language) WHERE l.name STARTS WITH langName
+				RETURN l.glottocode AS id, l.name AS name, l.geometryJSON AS json, $w1 AS weight
+				UNION ALL
+				UNWIND $langs AS langName
+				MATCH (l:Language) WHERE l.name STARTS WITH langName
+				MATCH (f:Family)-[:PARENT_OF]->(l)
+				MATCH (f)-[:PARENT_OF*1..]->(d:Language)
+				WHERE d <> l
+				RETURN d.glottocode AS id, d.name AS name, d.geometryJSON AS json, $w2 AS weight
+				UNION ALL
+				UNWIND $langs AS langName
+				MATCH (l:Language) WHERE l.name STARTS WITH langName
+				MATCH (f:Family)-[:PARENT_OF]->(l)
+				MATCH (g:Family)-[:PARENT_OF]->(f)
+				MATCH (g)-[:PARENT_OF*1..]->(d:Language)
+				RETURN d.glottocode AS id, d.name AS name, d.geometryJSON AS json, $w3 AS weight
+			}
+			WITH id, name, json, sum(weight) AS count
+			RETURN id, name, json, count
+			ORDER BY count DESC
+		`
+		params = map[string]any{"langs": langNames, "w1": tier1Weight, "w2": tier2Weight, "w3": tier3Weight}
 
 		s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
 		result, err = neo4j.ExecuteQuery(
@@ -239,8 +275,14 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 
 		features := make([]any, 0, len(result.Records))
 		for _, record := range result.Records {
+			id, _ := record.Get("id")
+			idStr, _ := id.(string)
+
 			name, _ := record.Get("name")
 			nameStr, _ := name.(string)
+
+			count, _ := record.Get("count")
+			countInt, _ := count.(int64)
 
 			geometryJSON, _ := record.Get("json")
 			geometryStr, _ := geometryJSON.(string)
@@ -253,7 +295,9 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 			features = append(features, map[string]any{
 				"type": "Feature",
 				"properties": map[string]any{
-					"name": nameStr,
+					"id":    idStr,
+					"name":  nameStr,
+					"count": countInt,
 				},
 				"geometry": geometry,
 			})
