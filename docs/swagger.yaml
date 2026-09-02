@@ -109,11 +109,6 @@ definitions:
       word:
         type: string
     type: object
-  server.ipaResponse:
-    properties:
-      ipa:
-        type: string
-    type: object
   server.messageResponse:
     properties:
       message:
@@ -404,39 +399,6 @@ paths:
       security:
       - BearerAuth: []
       summary: Get a word's origin and history
-      tags:
-      - words
-  /words/{word}/ipa:
-    get:
-      description: Returns the International Phonetic Alphabet transcription for a
-        word.
-      parameters:
-      - description: The word to look up
-        in: path
-        name: word
-        required: true
-        type: string
-      - default: English
-        description: Language of the word
-        in: query
-        name: lang
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.ipaResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Get a word's IPA transcription
       tags:
       - words
 securityDefinitions:

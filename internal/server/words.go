@@ -1,9 +1,7 @@
 package server
 
 import (
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	neturl "net/url"
@@ -23,7 +21,6 @@ func (s *Server) wordsRouter() http.Handler {
 	r.With(httprate.LimitBy(rateLimitEtymologyPerIP, rateLimitWindow, clientIPKey, httprate.WithLimitHandler(rateLimitHandler))).Get("/{word}/etymology", s.handleGetEtymology)
 	r.With(httprate.LimitBy(rateLimitHistoryPerIP, rateLimitWindow, clientIPKey, httprate.WithLimitHandler(rateLimitHandler))).Get("/{word}/history", s.handleGetHistory)
 	// r.Get("/{word}/definition", s.handleGetDefinition)
-	r.Get("/{word}/ipa", s.handleGetIpa)
 	r.Get("/", s.handleSearchWords)
 	return r
 }
@@ -154,6 +151,8 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	ipa := result.Records[0].AsMap()["path"].(neo4j.Path).Nodes[0].Props["ipa"]
+
 	// Convert hash set to array
 	langNames := make([]string, 0, len(familySet))
 	for k := range familySet {
@@ -270,6 +269,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		"graph":      records,
 		"familyTree": familyTree,
 		"geojson":    geojson,
+		"ipa":        ipa,
 	}
 
 	// Write to cache so that future queries are quick
@@ -584,86 +584,4 @@ func unescapeParam(r *http.Request, param string) string {
 		return decoded
 	}
 	return word
-}
-
-type ipaResponse struct {
-	IPA string `json:"ipa"`
-}
-
-// handleGetIpa godoc
-// @Summary      Get a word's IPA transcription
-// @Description  Returns the International Phonetic Alphabet transcription for a word.
-// @Tags         words
-// @Produce      json
-// @Param        word  path      string  true  "The word to look up"
-// @Param        lang  query     string  false "Language of the word"  default(English)
-// @Success      200   {object}  ipaResponse
-// @Failure      500   {object}  map[string]string
-// @Security     BearerAuth
-// @Router       /words/{word}/ipa [get]
-func (s *Server) handleGetIpa(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	lang := r.URL.Query().Get("lang")
-	if len(lang) > maxLangLength {
-		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("lang exceeds maximum length of %d characters", maxLangLength))
-		return
-	}
-	if lang != "" && lang != "English" {
-		s.logger.Warn("ipa not implemented for non-english")
-		s.writeJSONError(w, http.StatusBadRequest, "ipa not implemented for non-english")
-		return
-	}
-
-	// Input validation
-	word := unescapeParam(r, "word")
-	if len(word) == 0 {
-		s.writeJSONError(w, http.StatusBadRequest, "word is required")
-		return
-	}
-	if len(word) > maxWordLength {
-		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("word exceeds maximum length of %d characters", maxWordLength))
-		return
-	}
-
-	// Check if response exists in cache
-	val, err := s.cache.Get(r.Context(), r.RequestURI)
-	if err == nil {
-		w.Write([]byte(val))
-		return
-	}
-	s.logger.Error("cache lookup failed", "error", err)
-
-	var ipa string
-
-	// Retrieve blogpost
-	const sqlQuery = "SELECT ipa FROM ipa WHERE word LIKE ?"
-	s.logger.Debug("SQL: " + renderSQL(sqlQuery, []any{word}))
-	err = s.db.QueryRow(
-		sqlQuery,
-		word,
-	).Scan(&ipa)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			s.writeJSONError(w, http.StatusNotFound, "ipa not found")
-			return
-		}
-		s.logger.Error("query failed", "error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "failed to query database")
-		return
-	}
-
-	response := map[string]string{
-		"ipa": ipa,
-	}
-
-	// Write to cache so that future queries are quick
-	encoded, err := json.Marshal(response)
-	if err != nil {
-		s.logger.Error("failed to marshal response", "error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "failed to encode response")
-		return
-	}
-	w.Write(encoded)
-	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
