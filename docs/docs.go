@@ -444,56 +444,6 @@ const docTemplate = `{
                     }
                 }
             }
-        },
-        "/words/{word}/ipa": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Returns the International Phonetic Alphabet transcription for a word.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "words"
-                ],
-                "summary": "Get a word's IPA transcription",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "The word to look up",
-                        "name": "word",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "default": "English",
-                        "description": "Language of the word",
-                        "name": "lang",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/server.ipaResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
         }
     },
     "definitions": {
@@ -659,14 +609,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "word": {
-                    "type": "string"
-                }
-            }
-        },
-        "server.ipaResponse": {
-            "type": "object",
-            "properties": {
-                "ipa": {
                     "type": "string"
                 }
             }
