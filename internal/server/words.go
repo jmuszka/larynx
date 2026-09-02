@@ -170,7 +170,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	cypher = `
 		UNWIND $langs AS langName
 		MATCH (f:Family)-[:PARENT_OF]->(l:Language)
-		WHERE l.name CONTAINS langName
+		WHERE l.name STARTS WITH langName
 		WITH collect(DISTINCT f) AS targets
 
 		UNWIND targets AS target
