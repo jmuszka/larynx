@@ -38,7 +38,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"database": "ok",
 	}
 
-	if err := s.driver.VerifyConnectivity(ctx); err != nil {
+	if err := s.graph.VerifyConnectivity(ctx); err != nil {
 		services["database"] = "error"
 	}
 
