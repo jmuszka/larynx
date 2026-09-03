@@ -144,15 +144,25 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(result.Records) == 0 {
+		s.writeJSONError(w, http.StatusNotFound, "word not found")
+		return
+	}
+
 	records := make([]map[string]any, len(result.Records))
 	familySet := map[string]struct{}{}
 
+	var ipa any
 	for i, record := range result.Records {
 		records[i] = record.AsMap()
 
 		path, ok := record.AsMap()["path"].(neo4j.Path)
 		if !ok {
 			continue
+		}
+
+		if i == 0 && len(path.Nodes) > 0 {
+			ipa = path.Nodes[0].Props["ipa"]
 		}
 
 		for _, node := range path.Nodes {
@@ -164,8 +174,6 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 			familySet[lang] = struct{}{}
 		}
 	}
-
-	ipa := result.Records[0].AsMap()["path"].(neo4j.Path).Nodes[0].Props["ipa"]
 
 	// Convert hash set to array
 	langNames := make([]string, 0, len(familySet))

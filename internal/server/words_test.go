@@ -166,6 +166,15 @@ func TestHandleGetEtymology(t *testing.T) {
 		assert.Empty(t, graph.queries)
 	})
 
+	t.Run("word not found", func(t *testing.T) {
+		s := newSrv(t, &fakeGraphStore{})
+		r := withURLParam(httptest.NewRequest(http.MethodGet, "/words/bluetooth/etymology", nil), "word", "bluetooth")
+		w := httptest.NewRecorder()
+		s.handleGetEtymology(w, r)
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.JSONEq(t, `{"error":"word not found"}`, w.Body.String())
+	})
+
 	t.Run("success with geojson", func(t *testing.T) {
 		graph := newEtymologyGraph(t)
 		s := newSrv(t, graph)
