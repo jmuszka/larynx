@@ -27,6 +27,7 @@ type Config struct {
 	AIBaseURL         string
 	AIKey             string
 	AIModel           string
+	EtymologyBaseURL  string
 	Logger            *logging.Service
 	AllowedOrigins    []string
 	BearerTokens      []string
@@ -43,7 +44,7 @@ type Server struct {
 	*http.Server
 	cfg        Config
 	logger     *logging.Service
-	driver     neo4j.DriverWithContext
+	graph      graphStore
 	db         *sql.DB
 	cache      *cache.Cache
 	ai         *ai.Service
@@ -52,6 +53,10 @@ type Server struct {
 }
 
 func New(cfg Config) *Server {
+	if cfg.EtymologyBaseURL == "" {
+		cfg.EtymologyBaseURL = "https://www.etymonline.com"
+	}
+
 	// Connect to Neo4j database
 	ctx := context.Background()
 	driver, err := neo4j.NewDriverWithContext(
@@ -109,7 +114,7 @@ func New(cfg Config) *Server {
 	}
 	cfg.Logger.Info("ai service initialized")
 
-	s := &Server{cfg: cfg, logger: cfg.Logger, driver: driver, db: db, version: cfg.Version, cache: cache, ai: aiService, httpClient: httpClient}
+	s := &Server{cfg: cfg, logger: cfg.Logger, graph: &neo4jStore{driver: driver}, db: db, version: cfg.Version, cache: cache, ai: aiService, httpClient: httpClient}
 
 	// Routing
 	r := chi.NewRouter()

@@ -130,9 +130,8 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		"lang": lang,
 	}
 	s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
-	result, err := neo4j.ExecuteQuery(r.Context(), s.driver, cypher,
-		params, neo4j.EagerResultTransformer,
-		neo4j.ExecuteQueryWithDatabase("neo4j"))
+	result, err := s.graph.ExecuteQuery(r.Context(), cypher,
+		params, neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
 		s.logger.Error("failed to execute etymology query", "error", err)
 		s.writeJSONError(w, http.StatusInternalServerError, "failed to execute query")
@@ -194,9 +193,8 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		"langs": langNames,
 	}
 	s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
-	result, err = neo4j.ExecuteQuery(r.Context(), s.driver, cypher,
-		params, neo4j.EagerResultTransformer,
-		neo4j.ExecuteQueryWithDatabase("neo4j"))
+	result, err = s.graph.ExecuteQuery(r.Context(), cypher,
+		params, neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
 		s.logger.Error("failed to execute families query", "error", err)
 		s.writeJSONError(w, http.StatusInternalServerError, "failed to execute query")
@@ -259,12 +257,10 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		params = map[string]any{"langs": langNames, "w1": tier1Weight, "w2": tier2Weight, "w3": tier3Weight}
 
 		s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
-		result, err = neo4j.ExecuteQuery(
+		result, err = s.graph.ExecuteQuery(
 			r.Context(),
-			s.driver,
 			cypher,
 			params,
-			neo4j.EagerResultTransformer,           // Safely packs records into memory
 			neo4j.ExecuteQueryWithReadersRouting(), // Routes optimization for read-only query
 		)
 		if err != nil {
@@ -375,7 +371,7 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, err := http.NewRequestWithContext(r.Context(), "GET", "https://www.etymonline.com/search?q="+neturl.QueryEscape(word), nil)
+	req, err := http.NewRequestWithContext(r.Context(), "GET", s.cfg.EtymologyBaseURL+"/search?q="+neturl.QueryEscape(word), nil)
 	if err != nil {
 		s.logger.Error("failed to build request", "error", err)
 		s.writeJSONError(w, http.StatusInternalServerError, "failed to build request")
@@ -592,9 +588,8 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 	// Fetch search results from Neo4j
 	searchParams := map[string]any{"prefix": prefix}
 	s.logger.Debug("CYPHER: " + renderCypher(query, searchParams))
-	result, err := neo4j.ExecuteQuery(r.Context(), s.driver, query,
-		searchParams, neo4j.EagerResultTransformer,
-		neo4j.ExecuteQueryWithDatabase("neo4j"))
+	result, err := s.graph.ExecuteQuery(r.Context(), query,
+		searchParams, neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
 		s.logger.Error("failed to execute search query", "error", err)
 		s.writeJSONError(w, http.StatusInternalServerError, "failed to execute query")
