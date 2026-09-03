@@ -77,13 +77,34 @@ func TestPrompt(t *testing.T) {
 		s, err := New(Config{BaseURL: m.server.URL + "/", Model: "test-model", APIKey: "secret"})
 		require.NoError(t, err)
 
-		got, err := s.Prompt(context.Background(), "say hi")
+		got, err := s.Prompt(context.Background(), "", "say hi")
 		require.NoError(t, err)
 		assert.Equal(t, "hello world", got)
 		assert.Equal(t, "Bearer secret", gotAuth)
 		assert.Equal(t, "test-model", gotBody.Model)
+		assert.Equal(t, maxTokens, gotBody.MaxTokens)
+		assert.Len(t, gotBody.Messages, 1)
 		assert.Equal(t, "user", gotBody.Messages[0].Role)
 		assert.Equal(t, "say hi", gotBody.Messages[0].Content)
+	})
+
+	t.Run("system message", func(t *testing.T) {
+		var gotBody chatRequest
+		m := newMockAI(t, func(w http.ResponseWriter, r *http.Request) {
+			json.NewDecoder(r.Body).Decode(&gotBody)
+			w.Write([]byte(chatBody([]map[string]any{choice("ok", "stop")}, "")))
+		})
+
+		s, err := New(Config{BaseURL: m.server.URL, Model: "m"})
+		require.NoError(t, err)
+
+		_, err = s.Prompt(context.Background(), "be concise", "summarize")
+		require.NoError(t, err)
+		require.Len(t, gotBody.Messages, 2)
+		assert.Equal(t, "system", gotBody.Messages[0].Role)
+		assert.Equal(t, "be concise", gotBody.Messages[0].Content)
+		assert.Equal(t, "user", gotBody.Messages[1].Role)
+		assert.Equal(t, "summarize", gotBody.Messages[1].Content)
 	})
 
 	t.Run("non-200", func(t *testing.T) {
@@ -91,7 +112,7 @@ func TestPrompt(t *testing.T) {
 			http.Error(w, "boom", http.StatusInternalServerError)
 		})
 		s, _ := New(Config{BaseURL: m.server.URL, Model: "m"})
-		_, err := s.Prompt(context.Background(), "x")
+		_, err := s.Prompt(context.Background(), "", "x")
 		assert.ErrorContains(t, err, "HTTP 500")
 	})
 
@@ -100,7 +121,7 @@ func TestPrompt(t *testing.T) {
 			w.Write([]byte(chatBody(nil, "bad request")))
 		})
 		s, _ := New(Config{BaseURL: m.server.URL, Model: "m"})
-		_, err := s.Prompt(context.Background(), "x")
+		_, err := s.Prompt(context.Background(), "", "x")
 		assert.ErrorContains(t, err, "API error: bad request")
 	})
 
@@ -109,7 +130,7 @@ func TestPrompt(t *testing.T) {
 			w.Write([]byte(chatBody(nil, "")))
 		})
 		s, _ := New(Config{BaseURL: m.server.URL, Model: "m"})
-		_, err := s.Prompt(context.Background(), "x")
+		_, err := s.Prompt(context.Background(), "", "x")
 		assert.ErrorContains(t, err, "no choices")
 	})
 
@@ -129,7 +150,7 @@ func TestPrompt(t *testing.T) {
 			w.Write([]byte(chatBody([]map[string]any{choice("part2", "stop")}, "")))
 		})
 		s, _ := New(Config{BaseURL: m.server.URL, Model: "m"})
-		got, err := s.Prompt(context.Background(), "x")
+		got, err := s.Prompt(context.Background(), "", "x")
 		require.NoError(t, err)
 		assert.Equal(t, "part1part2", got)
 	})
@@ -139,19 +160,19 @@ func TestPrompt(t *testing.T) {
 			w.Write([]byte(chatBody([]map[string]any{choice("chunk", "length")}, "")))
 		})
 		s, _ := New(Config{BaseURL: m.server.URL, Model: "m"})
-		_, err := s.Prompt(context.Background(), "x")
+		_, err := s.Prompt(context.Background(), "", "x")
 		assert.ErrorContains(t, err, "continuations")
 	})
 
 	t.Run("invalid base url", func(t *testing.T) {
 		s, _ := New(Config{BaseURL: "://bad", Model: "m"})
-		_, err := s.Prompt(context.Background(), "x")
+		_, err := s.Prompt(context.Background(), "", "x")
 		assert.Error(t, err)
 	})
 
 	t.Run("server unreachable", func(t *testing.T) {
 		s, _ := New(Config{BaseURL: "http://127.0.0.1:1", Model: "m"})
-		_, err := s.Prompt(context.Background(), "x")
+		_, err := s.Prompt(context.Background(), "", "x")
 		assert.Error(t, err)
 	})
 }
@@ -163,7 +184,7 @@ func TestPromptURLNormalization(t *testing.T) {
 			w.Write([]byte(chatBody([]map[string]any{choice("ok", "stop")}, "")))
 		})
 		s, _ := New(Config{BaseURL: m.server.URL + "/v1", Model: "m"})
-		_, err := s.Prompt(context.Background(), "x")
+		_, err := s.Prompt(context.Background(), "", "x")
 		require.NoError(t, err)
 	})
 }

@@ -40,6 +40,12 @@ func New(cfg Config) (*Service, error) {
 	}, nil
 }
 
+// maxTokens is sized to fit a concise answer plus the model's hidden reasoning
+// tokens (deepseek-v4-flash emits `reasoning_content` that counts against the
+// output budget). Keeping it comfortably large lets a single request finish with
+// finish_reason "stop", avoiding the continuation loop and its extra round trips.
+const maxTokens = 1024
+
 type chatRequest struct {
 	Model       string        `json:"model"`
 	MaxTokens   int           `json:"max_tokens"`
@@ -62,16 +68,18 @@ type chatResponse struct {
 	} `json:"error,omitempty"`
 }
 
-func (s *Service) Prompt(ctx context.Context, prompt string) (string, error) {
+func (s *Service) Prompt(ctx context.Context, system, prompt string) (string, error) {
 	url := strings.TrimRight(s.cfg.BaseURL, "/")
 	if !strings.HasSuffix(url, "/v1") {
 		url += "/v1"
 	}
 	url += "/chat/completions"
 
-	messages := []chatMessage{
-		{Role: "user", Content: prompt},
+	messages := make([]chatMessage, 0, 2)
+	if system != "" {
+		messages = append(messages, chatMessage{Role: "system", Content: system})
 	}
+	messages = append(messages, chatMessage{Role: "user", Content: prompt})
 
 	const maxContinuations = 10
 
@@ -79,7 +87,7 @@ func (s *Service) Prompt(ctx context.Context, prompt string) (string, error) {
 	for i := 0; i <= maxContinuations; i++ {
 		reqBody := chatRequest{
 			Model:       s.cfg.Model,
-			MaxTokens:   128,
+			MaxTokens:   maxTokens,
 			Temperature: 0.0,
 			Messages:    messages,
 		}

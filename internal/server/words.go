@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	neturl "net/url"
 	"regexp"
@@ -13,6 +14,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httprate"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
+)
+
+var (
+	htmlTagRegexp = regexp.MustCompile(`(?s)<[^>]*>`)
+	adNoiseRegexp = regexp.MustCompile(`(?i)(ABCDEFGHIJKLMNOPQRSTUVWXYZ|Advertisement|Remove Ads|Want to remove ads\?[^.]*\.|allnamephraserootword parts|\d+ entries found\.|Related entries & more|Trending[^.]*\.)`)
 )
 
 func (s *Server) wordsRouter() http.Handler {
@@ -371,7 +377,7 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, err := http.NewRequestWithContext(r.Context(), "GET", s.cfg.EtymologyBaseURL+"/search?q="+neturl.QueryEscape(word), nil)
+	req, err := http.NewRequestWithContext(r.Context(), "GET", s.cfg.EtymologyBaseURL+"/word/"+neturl.PathEscape(word), nil)
 	if err != nil {
 		s.logger.Error("failed to build request", "error", err)
 		s.writeJSONError(w, http.StatusInternalServerError, "failed to build request")
@@ -403,60 +409,46 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var entries []Entry
-	whitespace := regexp.MustCompile(`\s{2,}`)
-	adNoise := regexp.MustCompile(`(?i)(ABCDEFGHIJKLMNOPQRSTUVWXYZ|Advertisement|Remove Ads|Want to remove ads\?[^.]*\.|allnamephraserootword parts|\d+ entries found\.|Related entries & more|Trending[^.]*\.)`)
 
-	// etymonline uses CSS modules — class names follow the pattern "word--*"
-	doc.Find("[class*='word--']").Each(func(_ int, sel *goquery.Selection) {
-		name := strings.TrimSpace(sel.Find("[class*='word__name']").Text())
+	// Each word sense is rendered as an h2 with the "font-serif" class, and its
+	// definition paragraphs live in the same enclosing section. Related-entry
+	// links use a span (not an h2), so they are excluded automatically.
+	doc.Find("h2[class*='font-serif']").Each(func(_ int, heading *goquery.Selection) {
+		name := strings.TrimSpace(heading.Find("[lang='en']").First().Text())
 		if name == "" {
-			name = strings.TrimSpace(sel.Find("h1, h2, h3").First().Text())
+			name = strings.TrimSpace(heading.Text())
 		}
-		text := strings.TrimSpace(sel.Find("[class*='word__defination'], [class*='word__def'], section").Text())
-		if text == "" {
-			text = strings.TrimSpace(sel.Find("p").Text())
+		section := heading.Closest("section")
+		if section.Length() == 0 {
+			section = heading.Parent()
 		}
-		text = whitespace.ReplaceAllString(text, " ")
-		text = adNoise.ReplaceAllString(text, "")
-		text = strings.TrimSpace(text)
-		if name != "" && text != "" {
-			entries = append(entries, Entry{Word: name, Text: text})
+		var text strings.Builder
+		section.Find("p").Each(func(_ int, p *goquery.Selection) {
+			if t := cleanEtymologyText(p.Text()); t != "" {
+				text.WriteString(t + " ")
+			}
+		})
+		if name != "" && text.Len() > 0 {
+			entries = append(entries, Entry{Word: name, Text: strings.TrimSpace(text.String())})
 		}
 	})
 
-	// Fall back to main content text if no structured entries matched
 	if len(entries) == 0 {
-		raw := doc.Find("main, [role='main'], article").Text()
-		if raw == "" {
-			raw = doc.Find("body").Text()
-		}
-		raw = whitespace.ReplaceAllString(strings.TrimSpace(raw), "\n")
-		raw = adNoise.ReplaceAllString(raw, "")
-		raw = strings.TrimSpace(raw)
-		entries = append(entries, Entry{Word: word, Text: raw})
+		s.writeJSONError(w, http.StatusNotFound, "no etymology entry found")
+		return
 	}
 
-	// Build a single text blob from entries matching the search word
+	// Build a single text blob from the matched word senses.
 	var raw strings.Builder
 	for _, e := range entries {
-		if !entryMatchesWord(e.Word, word) {
-			continue
-		}
-		if e.Word != "" {
-			raw.WriteString(e.Word + ": ")
-		}
-		raw.WriteString(e.Text + "\n\n")
-	}
-	if raw.Len() == 0 && len(entries) > 0 {
-		e := entries[0]
 		raw.WriteString(e.Word + ": ")
 		raw.WriteString(e.Text + "\n\n")
 	}
 
-	history, err := s.ai.Prompt(r.Context(), fmt.Sprintf(
-		"%s\n\nWrite one sentence about the origin and history of %q.",
-		raw.String(), word,
-	))
+	history, err := s.ai.Prompt(r.Context(),
+		"You are a concise etymology assistant. Summarize the source text in 1-2 short, direct sentences covering the word's origin and key historical stages. Preserve all essential facts; add no filler or commentary.",
+		fmt.Sprintf("%s\n\nSummarize the origin and history of %q in 1-2 concise sentences, preserving key information.", raw.String(), word),
+	)
 	if err != nil {
 		s.logger.Error("LLM formatting failed", "error", err)
 		s.writeJSON(w, http.StatusOK, map[string]any{"word": word, "results": entries})
@@ -479,10 +471,14 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
 
-func entryMatchesWord(entryWord, searchWord string) bool {
-	clean := strings.TrimSpace(strings.SplitN(entryWord, "(", 2)[0])
-	clean = strings.TrimRight(clean, " ")
-	return strings.EqualFold(clean, searchWord)
+// cleanEtymologyText decodes HTML entities, strips residual tags, removes ad
+// boilerplate, and collapses all whitespace so the LLM prompt stays compact
+// without losing any of the source text's content.
+func cleanEtymologyText(s string) string {
+	s = html.UnescapeString(s)
+	s = htmlTagRegexp.ReplaceAllString(s, " ")
+	s = adNoiseRegexp.ReplaceAllString(s, " ")
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // buildFamilyTree merges root-to-leaf lineages into a nested forest rooted at a
