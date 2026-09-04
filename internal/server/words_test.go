@@ -14,22 +14,42 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestEntryMatchesWord(t *testing.T) {
+func TestCleanEtymologyText(t *testing.T) {
 	tests := []struct {
-		entry  string
-		search string
-		want   bool
+		name string
+		in   string
+		want string
 	}{
-		{entry: "test", search: "test", want: true},
-		{entry: "Test", search: "test", want: true},
-		{entry: "test (n.)", search: "test", want: true},
-		{entry: "test (v.)", search: "test", want: true},
-		{entry: "tester", search: "test", want: false},
-		{entry: "test", search: "tester", want: false},
-		{entry: "test", search: "", want: false},
+		{
+			name: "strips html tags",
+			in:   `<div class="word__defination">from Old French <em>test</em></div>`,
+			want: "from Old French test",
+		},
+		{
+			name: "decodes entities",
+			in:   "Old English &amp; Middle English &#39;test&#39;",
+			want: "Old English & Middle English 'test'",
+		},
+		{
+			name: "collapses whitespace",
+			in:   "line one\n\nline two\t\tline three",
+			want: "line one line two line three",
+		},
+		{
+			name: "removes ad noise",
+			in:   "origin text Advertisement Remove Ads more text",
+			want: "origin text more text",
+		},
+		{
+			name: "preserves content",
+			in:   "Borrowed from Latin testum meaning earthen pot.",
+			want: "Borrowed from Latin testum meaning earthen pot.",
+		},
 	}
 	for _, tt := range tests {
-		assert.Equal(t, tt.want, entryMatchesWord(tt.entry, tt.search), "%q vs %q", tt.entry, tt.search)
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, cleanEtymologyText(tt.in))
+		})
 	}
 }
 
@@ -144,6 +164,15 @@ func TestHandleGetEtymology(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.JSONEq(t, `{"cached":true}`, w.Body.String())
 		assert.Empty(t, graph.queries)
+	})
+
+	t.Run("word not found", func(t *testing.T) {
+		s := newSrv(t, &fakeGraphStore{})
+		r := withURLParam(httptest.NewRequest(http.MethodGet, "/words/bluetooth/etymology", nil), "word", "bluetooth")
+		w := httptest.NewRecorder()
+		s.handleGetEtymology(w, r)
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.JSONEq(t, `{"error":"word not found"}`, w.Body.String())
 	})
 
 	t.Run("success with geojson", func(t *testing.T) {
@@ -273,7 +302,7 @@ func TestHandleGetHistory(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte(`<html><body><div class="word--Cx9iY"><div class="word__name">test</div><div class="word__defination">Some etymology text.</div></div></body></html>`))
+			w.Write([]byte(`<html><body><section><h2 class="font-serif"><span lang="en">test</span></h2><p>Some etymology text.</p></section></body></html>`))
 		}))
 		t.Cleanup(src.Close)
 
@@ -291,7 +320,7 @@ func TestHandleGetHistory(t *testing.T) {
 
 	t.Run("ai error fallback", func(t *testing.T) {
 		src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte(`<html><body><div class="word--Cx9iY"><div class="word__name">test</div><div class="word__defination">Some etymology text.</div></div></body></html>`))
+			w.Write([]byte(`<html><body><section><h2 class="font-serif"><span lang="en">test</span></h2><p>Some etymology text.</p></section></body></html>`))
 		}))
 		t.Cleanup(src.Close)
 
