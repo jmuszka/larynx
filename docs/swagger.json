@@ -367,6 +367,13 @@
                         "description": "Include geojson in the response",
                         "name": "geojson",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "true",
+                        "description": "Include the language family tree in the response",
+                        "name": "family",
+                        "in": "query"
                     }
                 ],
                 "responses": {

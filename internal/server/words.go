@@ -78,6 +78,7 @@ const (
 // @Param        word  path      string  true  "The word to look up"
 // @Param        lang  query     string  false "Language of the word"  default(English)
 // @Param        geojson  query  string  false "Include geojson in the response"  default(true)
+// @Param        family   query  string  false "Include the language family tree in the response"  default(true)
 // @Success      200   {object}  etymologyResponse
 // @Failure      500   {object}  map[string]string
 // @Security     BearerAuth
@@ -103,6 +104,15 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	if v := r.URL.Query().Get("geojson"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			includeGeojson = b
+		}
+	}
+
+	// The family tree is included by default, but can be disabled to skip the
+	// family hierarchy query.
+	includeFamily := true
+	if v := r.URL.Query().Get("family"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			includeFamily = b
 		}
 	}
 
@@ -181,60 +191,64 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		langNames = append(langNames, k)
 	}
 
-	// Get the family hierarchy. Each matched language sits directly under its
-	// immediate family (Family -[:PARENT_OF]-> Language), so collect those
-	// immediate families as the targets. For each target, return its lineage
-	// consisting of the target itself plus every branching point: a node whose
-	// children lead to at least two distinct targets (i.e. the LCAs). Nodes
-	// that only lead to a single target are pruned, so the lineage never walks
-	// above the highest LCA. Language nodes never appear.
-	cypher = `
-		UNWIND $langs AS langName
-		MATCH (f:Family)-[:PARENT_OF]->(l:Language)
-		WHERE l.name STARTS WITH langName
-		WITH collect(DISTINCT f) AS targets
+	var familyTree *familyNode
 
-		UNWIND targets AS target
-		MATCH path = (root:Family)-[:PARENT_OF*0..]->(target)
-		WHERE NOT (root)<-[:PARENT_OF]-()
-		WITH target, nodes(path) AS ns, targets
-		RETURN [n IN ns
-			WHERE n = target OR size([(n)-[:PARENT_OF]->(c)
-				WHERE size([(c)-[:PARENT_OF*0..]->(t) WHERE t IN targets | t]) > 0 | c]) >= 2
-			| n.name] AS lineage
-	`
-	params = map[string]any{
-		"langs": langNames,
-	}
-	s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
-	result, err = s.graph.ExecuteQuery(r.Context(), cypher,
-		params, neo4j.ExecuteQueryWithDatabase("neo4j"))
-	if err != nil {
-		s.logger.Error("failed to execute families query", "error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "failed to execute query")
-		return
-	}
+	if includeFamily {
+		// Get the family hierarchy. Each matched language sits directly under its
+		// immediate family (Family -[:PARENT_OF]-> Language), so collect those
+		// immediate families as the targets. For each target, return its lineage
+		// consisting of the target itself plus every branching point: a node whose
+		// children lead to at least two distinct targets (i.e. the LCAs). Nodes
+		// that only lead to a single target are pruned, so the lineage never walks
+		// above the highest LCA. Language nodes never appear.
+		cypher = `
+			UNWIND $langs AS langName
+			MATCH (f:Family)-[:PARENT_OF]->(l:Language)
+			WHERE l.name STARTS WITH langName
+			WITH collect(DISTINCT f) AS targets
 
-	lineages := make([][]string, 0, len(result.Records))
-	for _, record := range result.Records {
-		raw, ok := record.Get("lineage")
-		if !ok {
-			continue
+			UNWIND targets AS target
+			MATCH path = (root:Family)-[:PARENT_OF*0..]->(target)
+			WHERE NOT (root)<-[:PARENT_OF]-()
+			WITH target, nodes(path) AS ns, targets
+			RETURN [n IN ns
+				WHERE n = target OR size([(n)-[:PARENT_OF]->(c)
+					WHERE size([(c)-[:PARENT_OF*0..]->(t) WHERE t IN targets | t]) > 0 | c]) >= 2
+				| n.name] AS lineage
+		`
+		params = map[string]any{
+			"langs": langNames,
 		}
-		list, ok := raw.([]interface{})
-		if !ok {
-			continue
+		s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
+		result, err = s.graph.ExecuteQuery(r.Context(), cypher,
+			params, neo4j.ExecuteQueryWithDatabase("neo4j"))
+		if err != nil {
+			s.logger.Error("failed to execute families query", "error", err)
+			s.writeJSONError(w, http.StatusInternalServerError, "failed to execute query")
+			return
 		}
-		lineage := make([]string, 0, len(list))
-		for _, v := range list {
-			if name, ok := v.(string); ok {
-				lineage = append(lineage, name)
+
+		lineages := make([][]string, 0, len(result.Records))
+		for _, record := range result.Records {
+			raw, ok := record.Get("lineage")
+			if !ok {
+				continue
 			}
+			list, ok := raw.([]interface{})
+			if !ok {
+				continue
+			}
+			lineage := make([]string, 0, len(list))
+			for _, v := range list {
+				if name, ok := v.(string); ok {
+					lineage = append(lineage, name)
+				}
+			}
+			lineages = append(lineages, lineage)
 		}
-		lineages = append(lineages, lineage)
-	}
 
-	familyTree := buildFamilyTree(lineages)
+		familyTree = buildFamilyTree(lineages)
+	}
 
 	var geojson any
 
