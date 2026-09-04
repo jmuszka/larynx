@@ -35,7 +35,7 @@ func Loadenv() {
 	}
 }
 
-const version = "preview"
+const version = "v2026.09.14"
 
 // @title           Larynx API
 // @version         preview
