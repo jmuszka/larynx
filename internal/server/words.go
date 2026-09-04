@@ -136,7 +136,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 
 	/* Get graph pathways */
 	cypher := `
-		MATCH path = (head: Word {term: $word, lang: $lang}) (()-[:!cognate_of & !etymologically_related_to]->()){0,} (tail: Word)
+		MATCH path = (head: Word {term: $word, lang: $lang}) (()-[:abbreviation_of|` + "`back-formation_from`" + `|blend_of|borrowed_from|calque_of|clipping_of|compound_of|derived_from|doublet_with|has_affix|has_confix|has_prefix|has_prefix_with_root|has_root|has_suffix|inherited_from|initialism_of|is_onomatopoeic|learned_borrowing_from|named_after|orthographic_borrowing_from|` + "`phono-semantic_matching_of`" + `|semantic_loan_of|` + "`semi_learned_borrowing_from`" + `|unadapted_borrowing_from]->()){0,} (tail: Word)
 		WITH head, tail, path
 		ORDER BY length(path) DESC 
 		RETURN head, tail, head(collect(path)) AS path
