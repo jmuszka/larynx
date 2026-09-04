@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"unicode"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httprate"
@@ -55,6 +56,20 @@ const (
 	maxContentLength     = 100000
 	maxSlugLength        = 200
 )
+
+// slugify lowercases the title, strips all punctuation, and collapses the
+// remaining whitespace into single hyphens (e.g. "Hello, World!" ->
+// "hello-world").
+func slugify(title string) string {
+	title = strings.ToLower(title)
+	title = strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) {
+			return r
+		}
+		return -1
+	}, title)
+	return strings.Join(strings.Fields(title), "-")
+}
 
 func (s *Server) blogRouter() http.Handler {
 	r := chi.NewRouter()
@@ -168,7 +183,7 @@ func (s *Server) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Write new article to database
-	slug := strings.Join(strings.Split(strings.ToLower(req.Title), " "), "-")
+	slug := slugify(req.Title)
 	const insertQuery = "INSERT INTO articles (title, description, content, slug) VALUES (?, ?, ?, ?)"
 	s.logger.Debug("SQL: " + renderSQL(insertQuery, []any{req.Title, req.Description, req.Content, slug}))
 	_, err = s.db.Exec(insertQuery, req.Title, req.Description, req.Content, slug)
