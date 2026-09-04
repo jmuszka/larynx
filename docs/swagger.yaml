@@ -351,6 +351,11 @@ paths:
         in: query
         name: geojson
         type: string
+      - default: "true"
+        description: Include the language family tree in the response
+        in: query
+        name: family
+        type: string
       produces:
       - application/json
       responses:

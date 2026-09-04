@@ -211,6 +211,19 @@ func TestHandleGetEtymology(t *testing.T) {
 		assert.Nil(t, resp["geojson"])
 	})
 
+	t.Run("skip family", func(t *testing.T) {
+		graph := newEtymologyGraph(t)
+		s := newSrv(t, graph)
+		r := withURLParam(httptest.NewRequest(http.MethodGet, "/words/test/etymology?family=false", nil), "word", "test")
+		w := httptest.NewRecorder()
+		s.handleGetEtymology(w, r)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var resp map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		assert.Nil(t, resp["familyTree"])
+	})
+
 	t.Run("query error", func(t *testing.T) {
 		graph := &fakeGraphStore{executeFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
 			return nil, assert.AnError
