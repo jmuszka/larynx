@@ -43,6 +43,24 @@ func doRequest(t *testing.T, h http.HandlerFunc, method, target, body string) *h
 	return w
 }
 
+func TestSlugify(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"Hello World", "hello-world"},
+		{"Hello, World!", "hello-world"},
+		{"What's Up?", "whats-up"},
+		{"  Multiple   Spaces  ", "multiple-spaces"},
+		{"Numbers 123 OK", "numbers-123-ok"},
+		{"Café & Crème", "café-crème"},
+		{"...punctuation!!!", "punctuation"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, slugify(tt.in))
+	}
+}
+
 func TestHandleCreateArticle(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		s := newBlogServer(t)
