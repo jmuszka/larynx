@@ -332,6 +332,8 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	queryParts = append(queryParts, "modified = CURRENT_TIMESTAMP")
+
 	query := fmt.Sprintf("UPDATE articles SET %s WHERE slug = ?", strings.Join(queryParts, ", "))
 	args = append(args, slug)
 
