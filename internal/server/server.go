@@ -85,7 +85,7 @@ func New(cfg Config) *Server {
 			content     TEXT NOT NULL,
 			description TEXT NOT NULL,
 			published 	DATETIME DEFAULT CURRENT_TIMESTAMP,
-			modified    DATETIME DEFAULT CURRENT_TIMESTAMP
+			modified    DATETIME
 		)
 	`); err != nil {
 		cfg.Logger.Fatal("failed to create articles table", "error", err)
