@@ -181,7 +181,10 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			familySet[lang] = struct{}{}
+			// Remove Modern and Middle English to avoid polluting etymological composition
+			if lang != "English" && lang != "Middle English" {
+				familySet[lang] = struct{}{}
+			}
 		}
 	}
 
