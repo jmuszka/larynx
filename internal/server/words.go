@@ -17,8 +17,9 @@ import (
 )
 
 var (
-	htmlTagRegexp = regexp.MustCompile(`(?s)<[^>]*>`)
-	adNoiseRegexp = regexp.MustCompile(`(?i)(ABCDEFGHIJKLMNOPQRSTUVWXYZ|Advertisement|Remove Ads|Want to remove ads\?[^.]*\.|allnamephraserootword parts|\d+ entries found\.|Related entries & more|Trending[^.]*\.)`)
+	htmlTagRegexp    = regexp.MustCompile(`(?s)<[^>]*>`)
+	adNoiseRegexp    = regexp.MustCompile(`(?i)(ABCDEFGHIJKLMNOPQRSTUVWXYZ|Advertisement|Remove Ads|Want to remove ads\?[^.]*\.|allnamephraserootword parts|\d+ entries found\.|Related entries & more|Trending[^.]*\.)`)
+	familyCodeRegexp = regexp.MustCompile(`\[([A-Za-z0-9]+)\]`)
 )
 
 func (s *Server) wordsRouter() http.Handler {
@@ -254,29 +255,41 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		// (tier 1), every descendant of its immediate family (tier 2), and every
 		// descendant of that family's parent (tier 3). Tiers carry descending
 		// weights, and counts are summed per glottocode so overlapping polygons
-		// render hotter while the payload stays small.
+		// render hotter while the payload stays small. Each feature also carries
+		// its own full family lineage (root family down to its immediate parent
+		// family) so the frontend can label regions by family and cross-highlight
+		// between the map and the family chart.
 		cypher = `
 			CALL {
 				UNWIND $langs AS langName
 				MATCH (l:Language) WHERE l.name STARTS WITH langName
-				RETURN l.glottocode AS id, l.name AS name, l.geometryJSON AS json, $w1 AS weight
+				OPTIONAL MATCH (f:Family)-[:PARENT_OF]->(l)
+				OPTIONAL MATCH path = (root:Family)-[:PARENT_OF*0..]->(f)
+				WHERE NOT (root)<-[:PARENT_OF]-()
+				RETURN l.glottocode AS id, l.name AS name, l.geometryJSON AS json, $w1 AS weight, [n IN nodes(path) | n.name] AS chain
 				UNION ALL
 				UNWIND $langs AS langName
 				MATCH (l:Language) WHERE l.name STARTS WITH langName
 				MATCH (f:Family)-[:PARENT_OF]->(l)
 				MATCH (f)-[:PARENT_OF*1..]->(d:Language)
 				WHERE d <> l
-				RETURN d.glottocode AS id, d.name AS name, d.geometryJSON AS json, $w2 AS weight
+				OPTIONAL MATCH (df:Family)-[:PARENT_OF]->(d)
+				OPTIONAL MATCH dpath = (droot:Family)-[:PARENT_OF*0..]->(df)
+				WHERE NOT (droot)<-[:PARENT_OF]-()
+				RETURN d.glottocode AS id, d.name AS name, d.geometryJSON AS json, $w2 AS weight, [n IN nodes(dpath) | n.name] AS chain
 				UNION ALL
 				UNWIND $langs AS langName
 				MATCH (l:Language) WHERE l.name STARTS WITH langName
 				MATCH (f:Family)-[:PARENT_OF]->(l)
 				MATCH (g:Family)-[:PARENT_OF]->(f)
 				MATCH (g)-[:PARENT_OF*1..]->(d:Language)
-				RETURN d.glottocode AS id, d.name AS name, d.geometryJSON AS json, $w3 AS weight
+				OPTIONAL MATCH (df:Family)-[:PARENT_OF]->(d)
+				OPTIONAL MATCH dpath = (droot:Family)-[:PARENT_OF*0..]->(df)
+				WHERE NOT (droot)<-[:PARENT_OF]-()
+				RETURN d.glottocode AS id, d.name AS name, d.geometryJSON AS json, $w3 AS weight, [n IN nodes(dpath) | n.name] AS chain
 			}
-			WITH id, name, json, sum(weight) AS count
-			RETURN id, name, json, count
+			WITH id, name, json, sum(weight) AS count, chain
+			RETURN id, name, json, count, chain
 			ORDER BY count DESC
 		`
 		params = map[string]any{"langs": langNames, "w1": tier1Weight, "w2": tier2Weight, "w3": tier3Weight}
@@ -308,6 +321,10 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 			geometryJSON, _ := record.Get("json")
 			geometryStr, _ := geometryJSON.(string)
 
+			chain, _ := record.Get("chain")
+			chainList, _ := chain.([]interface{})
+			family, familyCode, ancestors := familyMetadata(chainList)
+
 			var geometry any
 			if err := json.Unmarshal([]byte(geometryStr), &geometry); err != nil {
 				continue
@@ -316,9 +333,13 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 			features = append(features, map[string]any{
 				"type": "Feature",
 				"properties": map[string]any{
-					"id":    idStr,
-					"name":  nameStr,
-					"count": countInt,
+					"id":         idStr,
+					"name":       nameStr,
+					"lang":       nameStr,
+					"count":      countInt,
+					"family":     family,
+					"familyCode": familyCode,
+					"ancestors":  ancestors,
 				},
 				"geometry": geometry,
 			})
@@ -551,6 +572,44 @@ func familyDisplayName(name string) string {
 		return name[:i]
 	}
 	return name
+}
+
+// familyCodeFromName extracts the glottocode from a Family name like
+// "Indo-European [indo1319]" (or a quoted variant).
+func familyCodeFromName(name string) string {
+	if m := familyCodeRegexp.FindStringSubmatch(name); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// familyMetadata flattens a retained family lineage (root down to the language's
+// immediate parent family) into the display name and glottocode of the immediate
+// family, plus a pipe-delimited ancestor code string ("|indo1319|germ1287|…|")
+// that the frontend can match against when cross-highlighting map and chart.
+func familyMetadata(chain []interface{}) (family, familyCode, ancestors string) {
+	if len(chain) == 0 {
+		return "", "", ""
+	}
+	codes := make([]string, 0, len(chain))
+	var lastDisplay, lastCode string
+	for _, raw := range chain {
+		s, ok := raw.(string)
+		if !ok {
+			continue
+		}
+		display := familyDisplayName(s)
+		code := familyCodeFromName(s)
+		lastDisplay, lastCode = display, code
+		if code == "" {
+			continue
+		}
+		codes = append(codes, code)
+	}
+	if len(codes) > 0 {
+		ancestors = "|" + strings.Join(codes, "|") + "|"
+	}
+	return lastDisplay, lastCode, ancestors
 }
 
 // TODO: implement
