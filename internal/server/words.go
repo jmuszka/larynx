@@ -544,8 +544,9 @@ func setFamilyValues(n *familyNode) int {
 }
 
 // familyDisplayName strips the bracketed glottocode suffix (e.g. " [indo1319]")
-// from a Family name for display purposes.
+// and any surrounding quotes from a Family name for display purposes.
 func familyDisplayName(name string) string {
+	name = strings.Trim(name, "'")
 	if i := strings.Index(name, " ["); i >= 0 {
 		return name[:i]
 	}
