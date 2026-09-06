@@ -254,6 +254,58 @@
                 }
             }
         },
+        "/geography/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a GeoJSON FeatureCollection for the Geography node whose name matches the id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "geography"
+                ],
+                "summary": "Get geography by name",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The geography name to look up",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.geographyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "security": [
@@ -582,6 +634,14 @@
                 "type": {
                     "type": "string",
                     "example": "FeatureCollection"
+                }
+            }
+        },
+        "server.geographyResponse": {
+            "type": "object",
+            "properties": {
+                "geojson": {
+                    "$ref": "#/definitions/server.geoJSON"
                 }
             }
         },

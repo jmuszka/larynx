@@ -20,6 +20,7 @@ func (s *Server) apiRouter() http.Handler {
 		r.Mount("/words", s.wordsRouter())
 		r.Mount("/games", s.gamesRouter())
 		r.Mount("/blog", s.blogRouter())
+		r.Mount("/geography", s.geographyRouter())
 	})
 
 	// Mount swagger API docs if in development mode
