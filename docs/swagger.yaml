@@ -91,6 +91,11 @@ definitions:
         example: FeatureCollection
         type: string
     type: object
+  server.geographyResponse:
+    properties:
+      geojson:
+        $ref: '#/definitions/server.geoJSON'
+    type: object
   server.healthResponse:
     properties:
       services:
@@ -283,6 +288,40 @@ paths:
       summary: Create an article
       tags:
       - blog
+  /geography/{id}:
+    get:
+      description: Returns a GeoJSON FeatureCollection for the Geography node whose
+        name matches the id.
+      parameters:
+      - description: The geography name to look up
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.geographyResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get geography by name
+      tags:
+      - geography
   /health:
     get:
       description: Returns the server version and the status of its services.
