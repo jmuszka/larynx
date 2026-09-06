@@ -87,6 +87,7 @@ func TestBuildFamilyTree(t *testing.T) {
 func TestFamilyDisplayName(t *testing.T) {
 	assert.Equal(t, "Indo-European", familyDisplayName("Indo-European [indo1319]"))
 	assert.Equal(t, "Indo-European", familyDisplayName("Indo-European"))
+	assert.Equal(t, "Indo-European", familyDisplayName("'Indo-European [indo1319]'"))
 	assert.Equal(t, "", familyDisplayName(""))
 }
 

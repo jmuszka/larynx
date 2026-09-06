@@ -199,11 +199,9 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	if includeFamily {
 		// Get the family hierarchy. Each matched language sits directly under its
 		// immediate family (Family -[:PARENT_OF]-> Language), so collect those
-		// immediate families as the targets. For each target, return its lineage
-		// consisting of the target itself plus every branching point: a node whose
-		// children lead to at least two distinct targets (i.e. the LCAs). Nodes
-		// that only lead to a single target are pruned, so the lineage never walks
-		// above the highest LCA. Language nodes never appear.
+		// immediate families as the targets. For each target, return its full
+		// lineage from the root family down to the target itself. Language nodes
+		// never appear.
 		cypher = `
 			UNWIND $langs AS langName
 			MATCH (f:Family)-[:PARENT_OF]->(l:Language)
@@ -213,11 +211,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 			UNWIND targets AS target
 			MATCH path = (root:Family)-[:PARENT_OF*0..]->(target)
 			WHERE NOT (root)<-[:PARENT_OF]-()
-			WITH target, nodes(path) AS ns, targets
-			RETURN [n IN ns
-				WHERE n = target OR size([(n)-[:PARENT_OF]->(c)
-					WHERE size([(c)-[:PARENT_OF*0..]->(t) WHERE t IN targets | t]) > 0 | c]) >= 2
-				| n.name] AS lineage
+			RETURN [n IN nodes(path) | n.name] AS lineage
 		`
 		params = map[string]any{
 			"langs": langNames,
@@ -550,8 +544,9 @@ func setFamilyValues(n *familyNode) int {
 }
 
 // familyDisplayName strips the bracketed glottocode suffix (e.g. " [indo1319]")
-// from a Family name for display purposes.
+// and any surrounding quotes from a Family name for display purposes.
 func familyDisplayName(name string) string {
+	name = strings.Trim(name, "'")
 	if i := strings.Index(name, " ["); i >= 0 {
 		return name[:i]
 	}
