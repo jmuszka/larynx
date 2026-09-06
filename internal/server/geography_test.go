@@ -18,7 +18,7 @@ func newGeographyGraph(t *testing.T) *fakeGraphStore {
 	return &fakeGraphStore{
 		executeFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
 			return &neo4j.EagerResult{Records: []*neo4j.Record{
-				fakeRecord([]string{"json"}, []any{`{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"Arawakan"},"geometry":{"type":"Point","coordinates":[0,0]}}]}`}),
+				fakeRecord([]string{"json", "props"}, []any{`{"type":"Point","coordinates":[0,0]}`, `{"name":"Arawakan"}`}),
 			}}, nil
 		},
 	}
@@ -94,10 +94,67 @@ func TestHandleGetGeography(t *testing.T) {
 		props, ok := feat["properties"].(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "Arawakan", props["name"])
+		assert.Equal(t, float64(geographyWeight), props["count"])
 
 		geom, ok := feat["geometry"].(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "Point", geom["type"])
+	})
+
+	t.Run("rounds up all matching nodes", func(t *testing.T) {
+		graph := &fakeGraphStore{executeFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
+			return &neo4j.EagerResult{Records: []*neo4j.Record{
+				fakeRecord([]string{"json", "props"}, []any{`{"type":"Point","coordinates":[0,0]}`, `{"name":"a"}`}),
+				fakeRecord([]string{"json", "props"}, []any{`{"type":"Point","coordinates":[1,1]}`, `{"name":"b"}`}),
+			}}, nil
+		}}
+		s := newSrv(t, graph)
+		r := withURLParam(httptest.NewRequest(http.MethodGet, "/geography/Multi", nil), "id", "Multi")
+		w := httptest.NewRecorder()
+		s.handleGetGeography(w, r)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var resp map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		gj := resp["geojson"].(map[string]any)
+		features := gj["features"].([]any)
+		require.Len(t, features, 2)
+	})
+
+	t.Run("uses ADMIN as name when no name present", func(t *testing.T) {
+		graph := &fakeGraphStore{executeFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
+			return &neo4j.EagerResult{Records: []*neo4j.Record{
+				fakeRecord([]string{"json", "props"}, []any{`{"type":"Point","coordinates":[0,0]}`, `{"ADMIN":"Zimbabwe"}`}),
+			}}, nil
+		}}
+		s := newSrv(t, graph)
+		r := withURLParam(httptest.NewRequest(http.MethodGet, "/geography/BritishEmpire", nil), "id", "BritishEmpire")
+		w := httptest.NewRecorder()
+		s.handleGetGeography(w, r)
+
+		var resp map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		feat := resp["geojson"].(map[string]any)["features"].([]any)[0].(map[string]any)
+		props := feat["properties"].(map[string]any)
+		assert.Equal(t, "Zimbabwe", props["name"])
+	})
+
+	t.Run("falls back to id when properties empty", func(t *testing.T) {
+		graph := &fakeGraphStore{executeFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
+			return &neo4j.EagerResult{Records: []*neo4j.Record{
+				fakeRecord([]string{"json", "props"}, []any{`{"type":"Point","coordinates":[0,0]}`, `{}`}),
+			}}, nil
+		}}
+		s := newSrv(t, graph)
+		r := withURLParam(httptest.NewRequest(http.MethodGet, "/geography/England", nil), "id", "England")
+		w := httptest.NewRecorder()
+		s.handleGetGeography(w, r)
+
+		var resp map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		feat := resp["geojson"].(map[string]any)["features"].([]any)[0].(map[string]any)
+		props := feat["properties"].(map[string]any)
+		assert.Equal(t, "England", props["name"])
 	})
 
 	t.Run("query error", func(t *testing.T) {

@@ -9,7 +9,12 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
 )
 
-const maxGeographyNameLength = 200
+const (
+	maxGeographyNameLength = 200
+	// geographyWeight is the fill intensity (a "count" in the response) the
+	// frontend uses to shade geography polygons. Higher values render darker.
+	geographyWeight = 3
+)
 
 type geographyResponse struct {
 	GeoJSON geoJSON `json:"geojson"`
@@ -23,7 +28,7 @@ func (s *Server) geographyRouter() http.Handler {
 
 // handleGetGeography godoc
 // @Summary      Get geography by name
-// @Description  Returns a GeoJSON FeatureCollection for the Geography node whose name matches the id.
+// @Description  Returns a GeoJSON FeatureCollection for every Geography node whose name matches the id.
 // @Tags         geography
 // @Produce      json
 // @Param        id   path      string  true  "The geography name to look up"
@@ -52,9 +57,12 @@ func (s *Server) handleGetGeography(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A geography is split across many nodes, one per polygon/multipolygon.
+	// Collect them all and emit each geometry as its own feature, labelled with
+	// the polygon's own name from its stored properties (not the geography name).
 	cypher := `
 		MATCH (g:Geography {name: $id})
-		RETURN g.geometryJSON AS json
+		RETURN g.geometryJSON AS json, g.properties AS props
 	`
 	params := map[string]any{"id": id}
 	s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
@@ -71,21 +79,39 @@ func (s *Server) handleGetGeography(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// geometryJSON stores the full FeatureCollection for the geography.
-	var fc geoJSON
+	features := make([]feature, 0, len(result.Records))
 	for _, record := range result.Records {
 		geometryJSON, _ := record.Get("json")
 		geometryStr, _ := geometryJSON.(string)
 
-		if err := json.Unmarshal([]byte(geometryStr), &fc); err != nil {
-			s.logger.Error("failed to parse geography geometry", "error", err)
-			s.writeJSONError(w, http.StatusInternalServerError, "failed to parse geometry")
-			return
+		var geometry map[string]any
+		if err := json.Unmarshal([]byte(geometryStr), &geometry); err != nil {
+			continue
 		}
-		break
+
+		props := map[string]any{}
+		if propsJSON, _ := record.Get("props"); propsJSON != nil {
+			if propsStr, ok := propsJSON.(string); ok {
+				_ = json.Unmarshal([]byte(propsStr), &props)
+			}
+		}
+
+		props["name"] = polygonName(props, id)
+		props["count"] = geographyWeight
+
+		features = append(features, feature{
+			Type:       "Feature",
+			Properties: props,
+			Geometry:   geometry,
+		})
 	}
 
-	response := geographyResponse{GeoJSON: fc}
+	response := geographyResponse{
+		GeoJSON: geoJSON{
+			Type:     "FeatureCollection",
+			Features: features,
+		},
+	}
 
 	// Write to cache so that future queries are quick
 	encoded, err := json.Marshal(response)
@@ -96,4 +122,16 @@ func (s *Server) handleGetGeography(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Write(encoded)
 	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
+}
+
+// polygonName resolves a polygon's display name from its source properties,
+// falling back to the geography name when no name is present.
+func polygonName(props map[string]any, fallback string) string {
+	if v, ok := props["name"].(string); ok && v != "" {
+		return v
+	}
+	if v, ok := props["ADMIN"].(string); ok && v != "" {
+		return v
+	}
+	return fallback
 }
