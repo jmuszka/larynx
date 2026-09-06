@@ -91,6 +91,36 @@ func TestFamilyDisplayName(t *testing.T) {
 	assert.Equal(t, "", familyDisplayName(""))
 }
 
+func TestFamilyMetadata(t *testing.T) {
+	t.Run("full chain", func(t *testing.T) {
+		family, code, ancestors := familyMetadata([]interface{}{
+			"Indo-European [indo1319]",
+			"'Germanic [germ1287]'",
+			"Anglic [angc1293]",
+		})
+		assert.Equal(t, "Anglic", family)
+		assert.Equal(t, "angc1293", code)
+		assert.Equal(t, "|indo1319|germ1287|angc1293|", ancestors)
+	})
+
+	t.Run("names without codes", func(t *testing.T) {
+		family, code, ancestors := familyMetadata([]interface{}{
+			"Indo-European",
+			"Germanic",
+		})
+		assert.Equal(t, "Germanic", family)
+		assert.Equal(t, "", code)
+		assert.Equal(t, "", ancestors)
+	})
+
+	t.Run("empty chain", func(t *testing.T) {
+		family, code, ancestors := familyMetadata(nil)
+		assert.Equal(t, "", family)
+		assert.Equal(t, "", code)
+		assert.Equal(t, "", ancestors)
+	})
+}
+
 func TestUnescapeParam(t *testing.T) {
 	r := withURLParam(httptest.NewRequest(http.MethodGet, "/", nil), "word", "caf%C3%A9")
 	assert.Equal(t, "café", unescapeParam(r, "word"))
@@ -115,7 +145,16 @@ func newEtymologyGraph(t *testing.T) *fakeGraphStore {
 				}}, nil
 			case 3:
 				return &neo4j.EagerResult{Records: []*neo4j.Record{
-					fakeRecord([]string{"name", "json"}, []any{"English", `{"type":"Point","coordinates":[0,0]}`}),
+					fakeRecord(
+						[]string{"id", "name", "json", "count", "chain"},
+						[]any{
+							"olde1238",
+							"Old English (ca. 450-1100)",
+							`{"type":"Point","coordinates":[0,0]}`,
+							int64(3),
+							[]any{"Indo-European [indo1319]", "Germanic [germ1287]", "Anglic [angc1293]"},
+						},
+					),
 				}}, nil
 			}
 			return &neo4j.EagerResult{}, nil
@@ -197,6 +236,16 @@ func TestHandleGetEtymology(t *testing.T) {
 		gj, ok := resp["geojson"].(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "FeatureCollection", gj["type"])
+
+		feat := gj["features"].([]any)[0].(map[string]any)
+		props := feat["properties"].(map[string]any)
+		assert.Equal(t, "olde1238", props["id"])
+		assert.Equal(t, "Old English (ca. 450-1100)", props["name"])
+		assert.Equal(t, float64(3), props["count"])
+		assert.Equal(t, "Old English (ca. 450-1100)", props["lang"])
+		assert.Equal(t, "Anglic", props["family"])
+		assert.Equal(t, "angc1293", props["familyCode"])
+		assert.Equal(t, "|indo1319|germ1287|angc1293|", props["ancestors"])
 	})
 
 	t.Run("skip geojson", func(t *testing.T) {
