@@ -573,13 +573,6 @@ func (s *Server) handleGetDefinition(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Check if response exists in cache
-	val, err := s.cache.Get(r.Context(), r.RequestURI)
-	if err == nil {
-		w.Write([]byte(val))
-		return
-	}
-
 	// Parse GET parameters
 	prefix := r.URL.Query().Get("prefix")
 
@@ -622,15 +615,7 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Write to cache so that future queries are quick
-	encoded, err := json.Marshal(terms)
-	if err != nil {
-		s.logger.Error("failed to marshal response", "error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "failed to encode response")
-		return
-	}
-	w.Write(encoded)
-	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
+	s.writeJSON(w, http.StatusOK, terms)
 }
 
 func unescapeParam(r *http.Request, param string) string {
