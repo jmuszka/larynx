@@ -206,13 +206,13 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		cypher = `
 			UNWIND $langs AS langName
 			MATCH (f:Family)-[:PARENT_OF]->(l:Language)
-			WHERE l.name STARTS WITH langName
+			WHERE l.name CONTAINS langName
 			WITH collect(DISTINCT f) AS targets
 
 			UNWIND targets AS target
 			MATCH path = (root:Family)-[:PARENT_OF*0..]->(target)
 			WHERE NOT (root)<-[:PARENT_OF]-()
-			RETURN [n IN nodes(path) | n.name] AS lineage
+			RETURN [n IN nodes(path) WHERE n.ignore IS NULL OR n.ignore = false | n.name] AS lineage
 		`
 		params = map[string]any{
 			"langs": langNames,
@@ -262,7 +262,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		cypher = `
 			CALL {
 				UNWIND $langs AS langName
-				MATCH (l:Language) WHERE l.name STARTS WITH langName
+				MATCH (l:Language) WHERE l.name CONTAINS langName
 				OPTIONAL MATCH (f:Family)-[:PARENT_OF]->(l)
 				OPTIONAL MATCH path = (root:Family)-[:PARENT_OF*0..]->(f)
 				WHERE NOT (root)<-[:PARENT_OF]-()
