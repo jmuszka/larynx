@@ -50,6 +50,11 @@ type messageResponse struct {
 	Message string `json:"message"`
 }
 
+type createArticleResponse struct {
+	Message string `json:"message"`
+	Slug    string `json:"slug"`
+}
+
 const (
 	maxTitleLength       = 200
 	maxDescriptionLength = 500
@@ -140,7 +145,7 @@ func (s *Server) handleGetArticles(w http.ResponseWriter, r *http.Request) {
 // @Accept       json
 // @Produce      json
 // @Param        body  body      createArticleRequest  true  "Article to create"
-// @Success      200   {object}  messageResponse
+// @Success      201   {object}  createArticleResponse
 // @Failure      400   {object}  map[string]string
 // @Failure      500   {object}  map[string]string
 // @Security     BearerAuth
@@ -158,27 +163,27 @@ func (s *Server) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 
 	// Input validation
 	if len(req.Title) == 0 {
-		s.writeJSONError(w, http.StatusBadRequest, "title is required")
+		s.writeJSONError(w, http.StatusBadRequest, "Title is required")
 		return
 	}
 	if len(req.Description) == 0 {
-		s.writeJSONError(w, http.StatusBadRequest, "description is required")
+		s.writeJSONError(w, http.StatusBadRequest, "Description is required")
 		return
 	}
 	if len(req.Content) == 0 {
-		s.writeJSONError(w, http.StatusBadRequest, "content is required")
+		s.writeJSONError(w, http.StatusBadRequest, "Content is required")
 		return
 	}
 	if len(req.Title) > maxTitleLength {
-		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLength))
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("Title exceeds maximum length of %d characters", maxTitleLength))
 		return
 	}
 	if len(req.Description) > maxDescriptionLength {
-		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("description exceeds maximum length of %d characters", maxDescriptionLength))
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("Description exceeds maximum length of %d characters", maxDescriptionLength))
 		return
 	}
 	if len(req.Content) > maxContentLength {
-		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("content exceeds maximum length of %d characters", maxContentLength))
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("Content exceeds maximum length of %d characters", maxContentLength))
 		return
 	}
 
@@ -193,8 +198,9 @@ func (s *Server) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.writeJSON(w, http.StatusOK, messageResponse{
+	s.writeJSON(w, http.StatusCreated, createArticleResponse{
 		Message: "Article created successfully",
+		Slug:    slug,
 	})
 }
 
@@ -213,11 +219,11 @@ func (s *Server) handleGetArticleBySlug(w http.ResponseWriter, r *http.Request) 
 
 	// Input validation
 	if len(slug) == 0 {
-		s.writeJSONError(w, http.StatusBadRequest, "slug is required")
+		s.writeJSONError(w, http.StatusBadRequest, "Slug is required")
 		return
 	}
 	if len(slug) > maxSlugLength {
-		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("slug exceeds maximum length of %d characters", maxSlugLength))
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("Slug exceeds maximum length of %d characters", maxSlugLength))
 		return
 	}
 
@@ -232,7 +238,7 @@ func (s *Server) handleGetArticleBySlug(w http.ResponseWriter, r *http.Request) 
 	).Scan(&a.Slug, &a.Title, &a.Description, &a.Content, &a.Published, &a.Modified)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			s.writeJSONError(w, http.StatusNotFound, "article not found")
+			s.writeJSONError(w, http.StatusNotFound, "Article not found")
 			return
 		}
 		s.logger.Error("query failed", "error", err)
@@ -262,11 +268,11 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 
 	// Input validation
 	if len(slug) == 0 {
-		s.writeJSONError(w, http.StatusBadRequest, "slug is required")
+		s.writeJSONError(w, http.StatusBadRequest, "Slug is required")
 		return
 	}
 	if len(slug) > maxSlugLength {
-		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("slug exceeds maximum length of %d characters", maxSlugLength))
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("Slug exceeds maximum length of %d characters", maxSlugLength))
 		return
 	}
 
@@ -282,31 +288,31 @@ func (s *Server) handleUpdateArticleBySlug(w http.ResponseWriter, r *http.Reques
 	// Input validation
 	if req.Title != nil {
 		if len(*req.Title) == 0 {
-			s.writeJSONError(w, http.StatusBadRequest, "title is required")
+			s.writeJSONError(w, http.StatusBadRequest, "Title is required")
 			return
 		}
 		if len(*req.Title) > maxTitleLength {
-			s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("title exceeds maximum length of %d characters", maxTitleLength))
+			s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("Title exceeds maximum length of %d characters", maxTitleLength))
 			return
 		}
 	}
 	if req.Description != nil {
 		if len(*req.Description) == 0 {
-			s.writeJSONError(w, http.StatusBadRequest, "description is required")
+			s.writeJSONError(w, http.StatusBadRequest, "Description is required")
 			return
 		}
 		if len(*req.Description) > maxDescriptionLength {
-			s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("description exceeds maximum length of %d characters", maxDescriptionLength))
+			s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("Description exceeds maximum length of %d characters", maxDescriptionLength))
 			return
 		}
 	}
 	if req.Content != nil {
 		if len(*req.Content) == 0 {
-			s.writeJSONError(w, http.StatusBadRequest, "content is required")
+			s.writeJSONError(w, http.StatusBadRequest, "Content is required")
 			return
 		}
 		if len(*req.Content) > maxContentLength {
-			s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("content exceeds maximum length of %d characters", maxContentLength))
+			s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("Content exceeds maximum length of %d characters", maxContentLength))
 			return
 		}
 	}
@@ -367,11 +373,11 @@ func (s *Server) handleDeleteArticleBySlug(w http.ResponseWriter, r *http.Reques
 
 	// Input validation
 	if len(slug) == 0 {
-		s.writeJSONError(w, http.StatusBadRequest, "slug is required")
+		s.writeJSONError(w, http.StatusBadRequest, "Slug is required")
 		return
 	}
 	if len(slug) > maxSlugLength {
-		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("slug exceeds maximum length of %d characters", maxSlugLength))
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("Slug exceeds maximum length of %d characters", maxSlugLength))
 		return
 	}
 

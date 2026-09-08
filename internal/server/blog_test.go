@@ -66,8 +66,8 @@ func TestHandleCreateArticle(t *testing.T) {
 		s := newBlogServer(t)
 		w := doRequest(t, s.handleCreateArticle, http.MethodPost, "/",
 			`{"title":"Hello World","description":"A test","content":"Body"}`)
-		assert.Equal(t, http.StatusOK, w.Code)
-		assert.JSONEq(t, `{"message":"Article created successfully"}`, w.Body.String())
+		assert.Equal(t, http.StatusCreated, w.Code)
+		assert.JSONEq(t, `{"message":"Article created successfully","slug":"hello-world"}`, w.Body.String())
 
 		var slug string
 		err := s.db.QueryRow("SELECT slug FROM articles WHERE title = 'Hello World'").Scan(&slug)
@@ -86,7 +86,7 @@ func TestHandleCreateArticle(t *testing.T) {
 		w := doRequest(t, s.handleCreateArticle, http.MethodPost, "/",
 			`{"description":"d","content":"c"}`)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		assert.JSONEq(t, `{"error":"title is required"}`, w.Body.String())
+		assert.JSONEq(t, `{"error":"Title is required"}`, w.Body.String())
 	})
 
 	t.Run("title too long", func(t *testing.T) {
@@ -153,7 +153,7 @@ func TestHandleGetArticleBySlug(t *testing.T) {
 		w := httptest.NewRecorder()
 		s.handleGetArticleBySlug(w, r)
 		assert.Equal(t, http.StatusNotFound, w.Code)
-		assert.JSONEq(t, `{"error":"article not found"}`, w.Body.String())
+		assert.JSONEq(t, `{"error":"Article not found"}`, w.Body.String())
 	})
 }
 

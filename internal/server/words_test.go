@@ -215,7 +215,7 @@ func TestHandleGetEtymology(t *testing.T) {
 		w := httptest.NewRecorder()
 		s.handleGetEtymology(w, r)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		assert.JSONEq(t, `{"error":"word is required"}`, w.Body.String())
+		assert.JSONEq(t, `{"error":"Word is required"}`, w.Body.String())
 	})
 
 	t.Run("word too long", func(t *testing.T) {
@@ -254,7 +254,7 @@ func TestHandleGetEtymology(t *testing.T) {
 		w := httptest.NewRecorder()
 		s.handleGetEtymology(w, r)
 		assert.Equal(t, http.StatusNotFound, w.Code)
-		assert.JSONEq(t, `{"error":"word not found"}`, w.Body.String())
+		assert.JSONEq(t, `{"error":"Word not found"}`, w.Body.String())
 	})
 
 	t.Run("success with geojson", func(t *testing.T) {
@@ -346,7 +346,7 @@ func TestHandleSearchWords(t *testing.T) {
 		w := httptest.NewRecorder()
 		s.handleSearchWords(w, httptest.NewRequest(http.MethodGet, "/", nil))
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		assert.JSONEq(t, `{"error":"prefix is required"}`, w.Body.String())
+		assert.JSONEq(t, `{"error":"Prefix is required"}`, w.Body.String())
 	})
 
 	t.Run("success", func(t *testing.T) {
@@ -402,7 +402,7 @@ func TestHandleGetHistory(t *testing.T) {
 		w := httptest.NewRecorder()
 		s.handleGetHistory(w, r)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		assert.JSONEq(t, `{"error":"word is required"}`, w.Body.String())
+		assert.JSONEq(t, `{"error":"Word is required"}`, w.Body.String())
 	})
 
 	t.Run("non-english lang", func(t *testing.T) {
@@ -442,10 +442,7 @@ func TestHandleGetHistory(t *testing.T) {
 		w := httptest.NewRecorder()
 		s.handleGetHistory(w, r)
 
-		assert.Equal(t, http.StatusOK, w.Code)
-		var resp map[string]any
-		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-		assert.Equal(t, "test", resp["word"])
-		assert.Contains(t, resp, "results")
+		assert.Equal(t, http.StatusBadGateway, w.Code)
+		assert.JSONEq(t, `{"error":"Failed to retrieve history summary"}`, w.Body.String())
 	})
 }

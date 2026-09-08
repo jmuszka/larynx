@@ -82,10 +82,10 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "201": {
+                        "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/server.messageResponse"
+                            "$ref": "#/definitions/server.createArticleResponse"
                         }
                     },
                     "400": {
@@ -268,7 +268,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns a GeoJSON FeatureCollection for the Geography node whose name matches the id.",
+                "description": "Returns a GeoJSON FeatureCollection for every Geography node whose name matches the id.",
                 "produces": [
                     "application/json"
                 ],
@@ -290,6 +290,15 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/server.geographyResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "404": {
@@ -442,6 +451,24 @@ const docTemplate = `{
                             "$ref": "#/definitions/server.etymologyResponse"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -492,8 +519,35 @@ const docTemplate = `{
                             "$ref": "#/definitions/server.historyResponse"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -574,6 +628,17 @@ const docTemplate = `{
                 }
             }
         },
+        "server.createArticleResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                }
+            }
+        },
         "server.etymologyResponse": {
             "type": "object",
             "properties": {
@@ -600,6 +665,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/server.familyNode"
                     }
+                },
+                "glottocode": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "string"
