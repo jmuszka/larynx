@@ -39,10 +39,19 @@ type etymologyResponse struct {
 }
 
 type familyNode struct {
-	ID       string        `json:"id"`
-	Name     string        `json:"name"`
-	Value    int           `json:"value"`
-	Children []*familyNode `json:"children,omitempty"`
+	ID         string        `json:"id"`
+	Name       string        `json:"name"`
+	Value      int           `json:"value"`
+	Glottocode string        `json:"glottocode,omitempty"`
+	Children   []*familyNode `json:"children,omitempty"`
+}
+
+// familyRef is a family name paired with its glottocode as loaded from the
+// graph. Neo4j returns project maps as map[string]any, so lineages and chains
+// are normalized into this shape before use.
+type familyRef struct {
+	name       string
+	glottocode string
 }
 
 type geoJSON struct {
@@ -206,13 +215,13 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		cypher = `
 			UNWIND $langs AS langName
 			MATCH (f:Family)-[:PARENT_OF]->(l:Language)
-			WHERE l.name STARTS WITH langName
+			WHERE l.name CONTAINS langName
 			WITH collect(DISTINCT f) AS targets
 
 			UNWIND targets AS target
 			MATCH path = (root:Family)-[:PARENT_OF*0..]->(target)
 			WHERE NOT (root)<-[:PARENT_OF]-()
-			RETURN [n IN nodes(path) | n.name] AS lineage
+			RETURN [n IN nodes(path) WHERE n.ignore IS NULL OR n.ignore = false | {name: n.name, glottocode: n.glottocode}] AS lineage
 		`
 		params = map[string]any{
 			"langs": langNames,
@@ -226,7 +235,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		lineages := make([][]string, 0, len(result.Records))
+		lineages := make([][]familyRef, 0, len(result.Records))
 		for _, record := range result.Records {
 			raw, ok := record.Get("lineage")
 			if !ok {
@@ -236,10 +245,10 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				continue
 			}
-			lineage := make([]string, 0, len(list))
+			lineage := make([]familyRef, 0, len(list))
 			for _, v := range list {
-				if name, ok := v.(string); ok {
-					lineage = append(lineage, name)
+				if ref, ok := familyRefFromValue(v); ok {
+					lineage = append(lineage, ref)
 				}
 			}
 			lineages = append(lineages, lineage)
@@ -262,11 +271,11 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		cypher = `
 			CALL {
 				UNWIND $langs AS langName
-				MATCH (l:Language) WHERE l.name STARTS WITH langName
+				MATCH (l:Language) WHERE l.name CONTAINS langName
 				OPTIONAL MATCH (f:Family)-[:PARENT_OF]->(l)
 				OPTIONAL MATCH path = (root:Family)-[:PARENT_OF*0..]->(f)
 				WHERE NOT (root)<-[:PARENT_OF]-()
-				RETURN l.glottocode AS id, l.name AS name, l.geometryJSON AS json, $w1 AS weight, [n IN nodes(path) | n.name] AS chain
+				RETURN l.glottocode AS id, l.name AS name, l.geometryJSON AS json, $w1 AS weight, [n IN nodes(path) | {name: n.name, glottocode: n.glottocode}] AS chain
 				UNION ALL
 				UNWIND $langs AS langName
 				MATCH (l:Language) WHERE l.name STARTS WITH langName
@@ -276,7 +285,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 				OPTIONAL MATCH (df:Family)-[:PARENT_OF]->(d)
 				OPTIONAL MATCH dpath = (droot:Family)-[:PARENT_OF*0..]->(df)
 				WHERE NOT (droot)<-[:PARENT_OF]-()
-				RETURN d.glottocode AS id, d.name AS name, d.geometryJSON AS json, $w2 AS weight, [n IN nodes(dpath) | n.name] AS chain
+				RETURN d.glottocode AS id, d.name AS name, d.geometryJSON AS json, $w2 AS weight, [n IN nodes(dpath) | {name: n.name, glottocode: n.glottocode}] AS chain
 				UNION ALL
 				UNWIND $langs AS langName
 				MATCH (l:Language) WHERE l.name STARTS WITH langName
@@ -286,7 +295,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 				OPTIONAL MATCH (df:Family)-[:PARENT_OF]->(d)
 				OPTIONAL MATCH dpath = (droot:Family)-[:PARENT_OF*0..]->(df)
 				WHERE NOT (droot)<-[:PARENT_OF]-()
-				RETURN d.glottocode AS id, d.name AS name, d.geometryJSON AS json, $w3 AS weight, [n IN nodes(dpath) | n.name] AS chain
+				RETURN d.glottocode AS id, d.name AS name, d.geometryJSON AS json, $w3 AS weight, [n IN nodes(dpath) | {name: n.name, glottocode: n.glottocode}] AS chain
 			}
 			WITH id, name, json, sum(weight) AS count, chain
 			RETURN id, name, json, count, chain
@@ -521,27 +530,51 @@ func cleanEtymologyText(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
+// familyRefFromValue normalizes a lineage/chain element from the graph into a
+// familyRef. New queries project maps with name and glottocode keys; plain
+// strings are still accepted so cached or legacy payloads keep working.
+func familyRefFromValue(v any) (familyRef, bool) {
+	switch raw := v.(type) {
+	case string:
+		return familyRef{name: raw, glottocode: familyCodeFromName(raw)}, true
+	case map[string]any:
+		name, _ := raw["name"].(string)
+		glottocode, _ := raw["glottocode"].(string)
+		if glottocode == "" {
+			glottocode = familyCodeFromName(name)
+		}
+		return familyRef{name: name, glottocode: glottocode}, true
+	}
+	return familyRef{}, false
+}
+
 // buildFamilyTree merges root-to-leaf lineages into a nested forest rooted at a
 // synthetic "root" node. Each distinct top-level ancestor becomes a child of the
 // root, and every node's value is the number of descendant leaves.
-func buildFamilyTree(lineages [][]string) *familyNode {
+func buildFamilyTree(lineages [][]familyRef) *familyNode {
 	root := &familyNode{ID: "root", Name: "root"}
 	for _, lineage := range lineages {
 		if len(lineage) == 0 {
 			continue
 		}
 		parent := root
-		for _, name := range lineage {
+		for _, ref := range lineage {
 			var child *familyNode
 			for _, c := range parent.Children {
-				if c.ID == name {
+				if c.ID == ref.name {
 					child = c
 					break
 				}
 			}
 			if child == nil {
-				child = &familyNode{ID: name, Name: familyDisplayName(name)}
+				child = &familyNode{
+					ID:         ref.name,
+					Name:       familyDisplayName(ref.name),
+					Glottocode: ref.glottocode,
+				}
 				parent.Children = append(parent.Children, child)
+			} else if child.Glottocode == "" {
+				child.Glottocode = ref.glottocode
 			}
 			parent = child
 		}
@@ -594,12 +627,12 @@ func familyMetadata(chain []interface{}) (family, familyCode, ancestors string) 
 	codes := make([]string, 0, len(chain))
 	var lastDisplay, lastCode string
 	for _, raw := range chain {
-		s, ok := raw.(string)
+		ref, ok := familyRefFromValue(raw)
 		if !ok {
 			continue
 		}
-		display := familyDisplayName(s)
-		code := familyCodeFromName(s)
+		display := familyDisplayName(ref.name)
+		code := ref.glottocode
 		lastDisplay, lastCode = display, code
 		if code == "" {
 			continue
