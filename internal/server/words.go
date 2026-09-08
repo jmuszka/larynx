@@ -404,7 +404,7 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	if lang != "" && lang != "English" {
 		s.logger.Warn("history not implemented for non-english")
-		s.writeJSONError(w, http.StatusBadRequest, "History not implemented for non-English")
+		s.writeJSONError(w, http.StatusOK, "History not implemented for non-English")
 		return
 	}
 

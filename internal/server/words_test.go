@@ -410,7 +410,8 @@ func TestHandleGetHistory(t *testing.T) {
 		r := withURLParam(httptest.NewRequest(http.MethodGet, "/?lang=French", nil), "word", "test")
 		w := httptest.NewRecorder()
 		s.handleGetHistory(w, r)
-		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.JSONEq(t, `{"error":"History not implemented for non-English"}`, w.Body.String())
 	})
 
 	t.Run("success", func(t *testing.T) {
