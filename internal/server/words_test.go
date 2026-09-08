@@ -55,20 +55,35 @@ func TestCleanEtymologyText(t *testing.T) {
 
 func TestBuildFamilyTree(t *testing.T) {
 	t.Run("single lineage", func(t *testing.T) {
-		root := buildFamilyTree([][]string{{"Indo-European", "Germanic"}})
+		root := buildFamilyTree([][]familyRef{
+			{
+				{name: "Indo-European", glottocode: "indo1319"},
+				{name: "Germanic", glottocode: "germ1287"},
+			},
+		})
 		require.Equal(t, "root", root.ID)
 		require.Len(t, root.Children, 1)
 		assert.Equal(t, "Indo-European", root.Children[0].ID)
+		assert.Equal(t, "indo1319", root.Children[0].Glottocode)
 		assert.Equal(t, 1, root.Children[0].Value)
 		require.Len(t, root.Children[0].Children, 1)
 		assert.Equal(t, "Germanic", root.Children[0].Children[0].ID)
+		assert.Equal(t, "germ1287", root.Children[0].Children[0].Glottocode)
 		assert.Equal(t, 1, root.Children[0].Children[0].Value)
 	})
 
 	t.Run("merges shared prefix", func(t *testing.T) {
-		root := buildFamilyTree([][]string{
-			{"Indo-European", "Germanic", "West"},
-			{"Indo-European", "Germanic", "North"},
+		root := buildFamilyTree([][]familyRef{
+			{
+				{name: "Indo-European", glottocode: "indo1319"},
+				{name: "Germanic", glottocode: "germ1287"},
+				{name: "West"},
+			},
+			{
+				{name: "Indo-European", glottocode: "indo1319"},
+				{name: "Germanic", glottocode: "germ1287"},
+				{name: "North"},
+			},
 		})
 		require.Len(t, root.Children, 1)
 		assert.Equal(t, 2, root.Value)
@@ -77,8 +92,17 @@ func TestBuildFamilyTree(t *testing.T) {
 		require.Len(t, root.Children[0].Children[0].Children, 2)
 	})
 
+	t.Run("fills in a missing code on a shared node", func(t *testing.T) {
+		root := buildFamilyTree([][]familyRef{
+			{{name: "Indo-European"}, {name: "Germanic", glottocode: "germ1287"}},
+			{{name: "Indo-European", glottocode: "indo1319"}, {name: "Germanic", glottocode: "germ1287"}},
+		})
+		require.Len(t, root.Children, 1)
+		assert.Equal(t, "indo1319", root.Children[0].Glottocode)
+	})
+
 	t.Run("empty lineages ignored", func(t *testing.T) {
-		root := buildFamilyTree([][]string{{}, {"A"}})
+		root := buildFamilyTree([][]familyRef{{}, {{name: "A"}}})
 		require.Len(t, root.Children, 1)
 		assert.Equal(t, "A", root.Children[0].ID)
 	})
@@ -92,7 +116,18 @@ func TestFamilyDisplayName(t *testing.T) {
 }
 
 func TestFamilyMetadata(t *testing.T) {
-	t.Run("full chain", func(t *testing.T) {
+	t.Run("map chain with glottocodes", func(t *testing.T) {
+		family, code, ancestors := familyMetadata([]interface{}{
+			map[string]any{"name": "Indo-European", "glottocode": "indo1319"},
+			map[string]any{"name": "Germanic", "glottocode": "germ1287"},
+			map[string]any{"name": "Anglic", "glottocode": "angc1293"},
+		})
+		assert.Equal(t, "Anglic", family)
+		assert.Equal(t, "angc1293", code)
+		assert.Equal(t, "|indo1319|germ1287|angc1293|", ancestors)
+	})
+
+	t.Run("legacy string chain", func(t *testing.T) {
 		family, code, ancestors := familyMetadata([]interface{}{
 			"Indo-European [indo1319]",
 			"'Germanic [germ1287]'",
@@ -105,8 +140,8 @@ func TestFamilyMetadata(t *testing.T) {
 
 	t.Run("names without codes", func(t *testing.T) {
 		family, code, ancestors := familyMetadata([]interface{}{
-			"Indo-European",
-			"Germanic",
+			map[string]any{"name": "Indo-European", "glottocode": nil},
+			map[string]any{"name": "Germanic", "glottocode": ""},
 		})
 		assert.Equal(t, "Germanic", family)
 		assert.Equal(t, "", code)
@@ -141,7 +176,10 @@ func newEtymologyGraph(t *testing.T) *fakeGraphStore {
 				}}, nil
 			case 2:
 				return &neo4j.EagerResult{Records: []*neo4j.Record{
-					fakeRecord([]string{"lineage"}, []any{[]any{"Indo-European", "Germanic"}}),
+					fakeRecord([]string{"lineage"}, []any{[]any{
+						map[string]any{"name": "Indo-European", "glottocode": "indo1319"},
+						map[string]any{"name": "Germanic", "glottocode": "germ1287"},
+					}}),
 				}}, nil
 			case 3:
 				return &neo4j.EagerResult{Records: []*neo4j.Record{
@@ -152,7 +190,11 @@ func newEtymologyGraph(t *testing.T) *fakeGraphStore {
 							"Old English (ca. 450-1100)",
 							`{"type":"Point","coordinates":[0,0]}`,
 							int64(3),
-							[]any{"Indo-European [indo1319]", "Germanic [germ1287]", "Anglic [angc1293]"},
+							[]any{
+								map[string]any{"name": "Indo-European", "glottocode": "indo1319"},
+								map[string]any{"name": "Germanic", "glottocode": "germ1287"},
+								map[string]any{"name": "Anglic", "glottocode": "angc1293"},
+							},
 						},
 					),
 				}}, nil
@@ -232,6 +274,14 @@ func TestHandleGetEtymology(t *testing.T) {
 		ft, ok := resp["familyTree"].(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "root", ft["name"])
+
+		children, ok := ft["children"].([]any)
+		require.True(t, ok)
+		require.Len(t, children, 1)
+		ie, ok := children[0].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "Indo-European", ie["name"])
+		assert.Equal(t, "indo1319", ie["glottocode"])
 
 		gj, ok := resp["geojson"].(map[string]any)
 		require.True(t, ok)
