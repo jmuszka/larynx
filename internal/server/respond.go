@@ -20,3 +20,14 @@ func (s *Server) writeJSON(w http.ResponseWriter, status int, v any) {
 func (s *Server) writeJSONError(w http.ResponseWriter, status int, msg string) {
 	s.writeJSON(w, status, map[string]string{"error": msg})
 }
+
+// writeRawJSON writes pre-encoded JSON bytes (e.g. a cached response) with the
+// given status code, so cached payloads go through the same Content-Type and
+// status handling as freshly encoded responses.
+func (s *Server) writeRawJSON(w http.ResponseWriter, status int, data []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if _, err := w.Write(data); err != nil {
+		s.logger.Error("failed to write response", "error", err)
+	}
+}

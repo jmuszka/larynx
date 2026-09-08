@@ -32,5 +32,5 @@ func adminUserKey(r *http.Request) (string, error) {
 func rateLimitHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusTooManyRequests)
-	json.NewEncoder(w).Encode(map[string]string{"error": "rate limit exceeded"})
+	json.NewEncoder(w).Encode(map[string]string{"error": "Rate limit exceeded"})
 }

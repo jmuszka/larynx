@@ -119,9 +119,9 @@ func New(cfg Config) *Server {
 	// Routing
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
+	r.Use(s.recoverer)
 	r.Use(middleware.Compress(5))
-	r.Use(middleware.Timeout(30 * time.Second))
+	r.Use(s.timeout)
 
 	// CORS
 	if cfg.DebugMode {

@@ -38,7 +38,7 @@ func TestUnauthorized(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.unauthorized(w)
 	require.Equal(t, http.StatusUnauthorized, w.Code)
-	assert.JSONEq(t, `{"error":"unauthorized"}`, w.Body.String())
+	assert.JSONEq(t, `{"error":"Unauthorized"}`, w.Body.String())
 }
 
 func TestAdminUnauthorized(t *testing.T) {
@@ -46,5 +46,5 @@ func TestAdminUnauthorized(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.adminUnauthorized(w)
 	require.Equal(t, http.StatusUnauthorized, w.Code)
-	assert.JSONEq(t, `{"error":"invalid or missing admin token"}`, w.Body.String())
+	assert.JSONEq(t, `{"error":"Invalid or missing admin token"}`, w.Body.String())
 }

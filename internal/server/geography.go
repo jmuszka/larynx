@@ -33,27 +33,26 @@ func (s *Server) geographyRouter() http.Handler {
 // @Produce      json
 // @Param        id   path      string  true  "The geography name to look up"
 // @Success      200  {object}  geographyResponse
+// @Failure      400  {object}  map[string]string
 // @Failure      404  {object}  map[string]string
 // @Failure      500  {object}  map[string]string
 // @Security     BearerAuth
 // @Router       /geography/{id} [get]
 func (s *Server) handleGetGeography(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	id := unescapeParam(r, "id")
+	if len(id) == 0 {
+		s.writeJSONError(w, http.StatusBadRequest, "ID is required")
+		return
+	}
+	if len(id) > maxGeographyNameLength {
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("ID exceeds maximum length of %d characters", maxGeographyNameLength))
+		return
+	}
 
 	// Check if response exists in cache
 	val, err := s.cache.Get(r.Context(), r.RequestURI)
 	if err == nil {
-		w.Write([]byte(val))
-		return
-	}
-
-	id := unescapeParam(r, "id")
-	if len(id) == 0 {
-		s.writeJSONError(w, http.StatusBadRequest, "id is required")
-		return
-	}
-	if len(id) > maxGeographyNameLength {
-		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("id exceeds maximum length of %d characters", maxGeographyNameLength))
+		s.writeRawJSON(w, http.StatusOK, []byte(val))
 		return
 	}
 
@@ -70,12 +69,12 @@ func (s *Server) handleGetGeography(w http.ResponseWriter, r *http.Request) {
 		params, neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
 		s.logger.Error("failed to execute geography query", "error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "failed to execute query")
+		s.writeJSONError(w, http.StatusInternalServerError, "Failed to execute query")
 		return
 	}
 
 	if len(result.Records) == 0 {
-		s.writeJSONError(w, http.StatusNotFound, "geography not found")
+		s.writeJSONError(w, http.StatusNotFound, "Geography not found")
 		return
 	}
 
@@ -117,10 +116,10 @@ func (s *Server) handleGetGeography(w http.ResponseWriter, r *http.Request) {
 	encoded, err := json.Marshal(response)
 	if err != nil {
 		s.logger.Error("failed to marshal response", "error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "failed to encode response")
+		s.writeJSONError(w, http.StatusInternalServerError, "Failed to encode response")
 		return
 	}
-	w.Write(encoded)
+	s.writeRawJSON(w, http.StatusOK, encoded)
 	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
 

@@ -36,11 +36,11 @@ func (s *Server) bearerAuth(next http.Handler) http.Handler {
 }
 
 func (s *Server) unauthorized(w http.ResponseWriter) {
-	s.writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+	s.writeJSONError(w, http.StatusUnauthorized, "Unauthorized")
 }
 
 func (s *Server) adminUnauthorized(w http.ResponseWriter) {
-	s.writeJSONError(w, http.StatusUnauthorized, "invalid or missing admin token")
+	s.writeJSONError(w, http.StatusUnauthorized, "Invalid or missing admin token")
 }
 
 func (s *Server) adminJWTAuth(next http.Handler) http.Handler {

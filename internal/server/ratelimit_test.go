@@ -60,5 +60,5 @@ func TestRateLimitHandler(t *testing.T) {
 	rateLimitHandler(w, httptest.NewRequest(http.MethodGet, "/", nil))
 
 	assert.Equal(t, http.StatusTooManyRequests, w.Code)
-	assert.JSONEq(t, `{"error":"rate limit exceeded"}`, w.Body.String())
+	assert.JSONEq(t, `{"error":"Rate limit exceeded"}`, w.Body.String())
 }

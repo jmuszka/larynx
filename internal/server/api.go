@@ -18,7 +18,6 @@ func (s *Server) apiRouter() http.Handler {
 		r.Use(httprate.LimitBy(rateLimitDefaultPerIP, rateLimitWindow, clientIPKey, httprate.WithLimitHandler(rateLimitHandler)))
 		r.Mount("/health", s.healthRouter())
 		r.Mount("/words", s.wordsRouter())
-		r.Mount("/games", s.gamesRouter())
 		r.Mount("/blog", s.blogRouter())
 		r.Mount("/geography", s.geographyRouter())
 	})

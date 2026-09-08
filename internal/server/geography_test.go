@@ -35,7 +35,7 @@ func TestHandleGetGeography(t *testing.T) {
 		w := httptest.NewRecorder()
 		s.handleGetGeography(w, r)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		assert.JSONEq(t, `{"error":"id is required"}`, w.Body.String())
+		assert.JSONEq(t, `{"error":"ID is required"}`, w.Body.String())
 	})
 
 	t.Run("id too long", func(t *testing.T) {
@@ -66,7 +66,7 @@ func TestHandleGetGeography(t *testing.T) {
 		w := httptest.NewRecorder()
 		s.handleGetGeography(w, r)
 		assert.Equal(t, http.StatusNotFound, w.Code)
-		assert.JSONEq(t, `{"error":"geography not found"}`, w.Body.String())
+		assert.JSONEq(t, `{"error":"Geography not found"}`, w.Body.String())
 	})
 
 	t.Run("success", func(t *testing.T) {
