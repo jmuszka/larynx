@@ -172,6 +172,7 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	familySet := map[string]struct{}{}
 
 	var ipa any
+	// First pass: ignore modern and middle english
 	for i, record := range result.Records {
 		records[i] = record.AsMap()
 
@@ -192,6 +193,30 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 
 			// Remove Modern and Middle English to avoid polluting etymological composition
 			if lang != "English" && lang != "Middle English" {
+				familySet[lang] = struct{}{}
+			}
+		}
+	}
+
+	// Second pass: if no other languages were found, add English back
+	if len(familySet) == 0 {
+		for i, record := range result.Records {
+			records[i] = record.AsMap()
+
+			path, ok := record.AsMap()["path"].(neo4j.Path)
+			if !ok {
+				continue
+			}
+
+			if i == 0 && len(path.Nodes) > 0 {
+				ipa = path.Nodes[0].Props["ipa"]
+			}
+
+			for _, node := range path.Nodes {
+				lang, ok := node.Props["lang"].(string)
+				if !ok {
+					continue
+				}
 				familySet[lang] = struct{}{}
 			}
 		}
