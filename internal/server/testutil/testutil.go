@@ -1,4 +1,6 @@
-package server
+// Package testutil provides shared test helpers for the server package and
+// its endpoint handlers.
+package testutil
 
 import (
 	"context"
@@ -17,7 +19,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func testLogger(t *testing.T) *logging.Service {
+func TestLogger(t *testing.T) *logging.Service {
 	t.Helper()
 	l, err := logging.New(logging.Config{Level: logging.LevelError})
 	require.NoError(t, err)
@@ -25,7 +27,7 @@ func testLogger(t *testing.T) *logging.Service {
 	return l
 }
 
-func newTestDB(t *testing.T) *sql.DB {
+func NewTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "test.db"))
 	require.NoError(t, err)
@@ -46,37 +48,37 @@ func newTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-type fakeGraphStore struct {
-	executeFn func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error)
-	connErr   error
-	queries   []string
-	paramSets []map[string]any
+type FakeGraphStore struct {
+	ExecuteFn func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error)
+	ConnErr   error
+	Queries   []string
+	ParamSets []map[string]any
 }
 
-func (f *fakeGraphStore) ExecuteQuery(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
-	f.queries = append(f.queries, query)
-	f.paramSets = append(f.paramSets, params)
-	if f.executeFn != nil {
-		return f.executeFn(ctx, query, params, opts...)
+func (f *FakeGraphStore) ExecuteQuery(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
+	f.Queries = append(f.Queries, query)
+	f.ParamSets = append(f.ParamSets, params)
+	if f.ExecuteFn != nil {
+		return f.ExecuteFn(ctx, query, params, opts...)
 	}
 	return &neo4j.EagerResult{}, nil
 }
 
-func (f *fakeGraphStore) VerifyConnectivity(ctx context.Context) error {
-	return f.connErr
+func (f *FakeGraphStore) VerifyConnectivity(ctx context.Context) error {
+	return f.ConnErr
 }
 
-func fakeRecord(keys []string, values []any) *neo4j.Record {
+func FakeRecord(keys []string, values []any) *neo4j.Record {
 	return &neo4j.Record{Keys: keys, Values: values}
 }
 
-func withURLParam(r *http.Request, key, value string) *http.Request {
+func WithURLParam(r *http.Request, key, value string) *http.Request {
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add(key, value)
 	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 }
 
-func newServerCache(t *testing.T) *cache.Cache {
+func NewServerCache(t *testing.T) *cache.Cache {
 	t.Helper()
 	mr := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})

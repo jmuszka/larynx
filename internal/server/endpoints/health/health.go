@@ -1,11 +1,10 @@
-package server
+package health
 
 import (
 	"context"
+	"github.com/jmuszka/larynx/internal/server/endpoints"
 	"net/http"
 	"time"
-
-	"github.com/go-chi/chi/v5"
 )
 
 type healthResponse struct {
@@ -14,13 +13,7 @@ type healthResponse struct {
 	Services map[string]string `json:"services"`
 }
 
-func (s *Server) healthRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Get("/", s.handleHealth)
-	return r
-}
-
-// handleHealth godoc
+// HandleHealth godoc
 // @Summary      Health check
 // @Description  Returns the server version and the status of its services.
 // @Tags         health
@@ -29,7 +22,7 @@ func (s *Server) healthRouter() http.Handler {
 // @Failure      503  {object}  healthResponse
 // @Security     BearerAuth
 // @Router       /health [get]
-func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+func HandleHealth(s *endpoints.Server, w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
@@ -38,7 +31,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"database": "ok",
 	}
 
-	if err := s.graph.VerifyConnectivity(ctx); err != nil {
+	if err := s.Graph.VerifyConnectivity(ctx); err != nil {
 		services["database"] = "error"
 	}
 
@@ -55,8 +48,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusServiceUnavailable
 	}
 
-	s.writeJSON(w, status, healthResponse{
-		Version:  s.version,
+	s.WriteJSON(w, status, healthResponse{
+		Version:  s.Version,
 		Status:   overall,
 		Services: services,
 	})

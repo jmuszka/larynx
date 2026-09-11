@@ -1,4 +1,4 @@
-package server
+package endpoints
 
 import (
 	"testing"
@@ -58,7 +58,7 @@ func TestRenderCypher(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, renderCypher(tt.query, tt.params))
+			assert.Equal(t, tt.want, RenderCypher(tt.query, tt.params))
 		})
 	}
 }
@@ -80,16 +80,16 @@ func TestRenderCypherValue(t *testing.T) {
 		{in: true, want: "true"},
 	}
 	for _, tt := range tests {
-		assert.Equal(t, tt.want, renderCypherValue(tt.in))
+		assert.Equal(t, tt.want, RenderCypherValue(tt.in))
 	}
 }
 
 func TestRenderSQL(t *testing.T) {
 	assert.Equal(t, "SELECT * FROM t WHERE a = 'x' AND b = 1",
-		renderSQL("SELECT * FROM t WHERE a = ? AND b = ?", []any{"x", 1}))
+		RenderSQL("SELECT * FROM t WHERE a = ? AND b = ?", []any{"x", 1}))
 }
 
 func TestRenderSQLValue(t *testing.T) {
-	assert.Equal(t, "'s'", renderSQLValue("s"))
-	assert.Equal(t, "7", renderSQLValue(7))
+	assert.Equal(t, "'s'", RenderSQLValue("s"))
+	assert.Equal(t, "7", RenderSQLValue(7))
 }

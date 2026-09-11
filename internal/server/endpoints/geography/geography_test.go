@@ -1,4 +1,4 @@
-package server
+package geography
 
 import (
 	"context"
@@ -8,72 +8,74 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jmuszka/larynx/internal/server/endpoints"
+	"github.com/jmuszka/larynx/internal/server/testutil"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func newGeographyGraph(t *testing.T) *fakeGraphStore {
+func newGeographyGraph(t *testing.T) *testutil.FakeGraphStore {
 	t.Helper()
-	return &fakeGraphStore{
-		executeFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
+	return &testutil.FakeGraphStore{
+		ExecuteFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
 			return &neo4j.EagerResult{Records: []*neo4j.Record{
-				fakeRecord([]string{"json", "props"}, []any{`{"type":"Point","coordinates":[0,0]}`, `{"name":"Arawakan"}`}),
+				testutil.FakeRecord([]string{"json", "props"}, []any{`{"type":"Point","coordinates":[0,0]}`, `{"name":"Arawakan"}`}),
 			}}, nil
 		},
 	}
 }
 
 func TestHandleGetGeography(t *testing.T) {
-	newSrv := func(t *testing.T, graph graphStore) *Server {
-		return &Server{logger: testLogger(t), graph: graph, cache: newServerCache(t)}
+	newSrv := func(t *testing.T, graph endpoints.GraphStore) *endpoints.Server {
+		return endpoints.New(endpoints.Config{Logger: testutil.TestLogger(t), Graph: graph, Cache: testutil.NewServerCache(t)})
 	}
 
 	t.Run("missing id", func(t *testing.T) {
-		s := newSrv(t, &fakeGraphStore{})
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/", nil), "id", "")
+		s := newSrv(t, &testutil.FakeGraphStore{})
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/", nil), "id", "")
 		w := httptest.NewRecorder()
-		s.handleGetGeography(w, r)
+		HandleGetGeography(s, w, r)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		assert.JSONEq(t, `{"error":"ID is required"}`, w.Body.String())
 	})
 
 	t.Run("id too long", func(t *testing.T) {
-		s := newSrv(t, &fakeGraphStore{})
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/", nil), "id", strings.Repeat("a", maxGeographyNameLength+1))
+		s := newSrv(t, &testutil.FakeGraphStore{})
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/", nil), "id", strings.Repeat("a", maxGeographyNameLength+1))
 		w := httptest.NewRecorder()
-		s.handleGetGeography(w, r)
+		HandleGetGeography(s, w, r)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 
 	t.Run("cache hit", func(t *testing.T) {
-		graph := &fakeGraphStore{}
+		graph := &testutil.FakeGraphStore{}
 		s := newSrv(t, graph)
-		require.NoError(t, s.cache.Set(t.Context(), "/geography/test", `{"cached":true}`, 0))
+		require.NoError(t, s.Cache.Set(t.Context(), "/geography/test", `{"cached":true}`, 0))
 
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/geography/test", nil), "id", "test")
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/geography/test", nil), "id", "test")
 		w := httptest.NewRecorder()
-		s.handleGetGeography(w, r)
+		HandleGetGeography(s, w, r)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.JSONEq(t, `{"cached":true}`, w.Body.String())
-		assert.Empty(t, graph.queries)
+		assert.Empty(t, graph.Queries)
 	})
 
 	t.Run("geography not found", func(t *testing.T) {
-		s := newSrv(t, &fakeGraphStore{})
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/geography/nope", nil), "id", "nope")
+		s := newSrv(t, &testutil.FakeGraphStore{})
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/geography/nope", nil), "id", "nope")
 		w := httptest.NewRecorder()
-		s.handleGetGeography(w, r)
+		HandleGetGeography(s, w, r)
 		assert.Equal(t, http.StatusNotFound, w.Code)
 		assert.JSONEq(t, `{"error":"Geography not found"}`, w.Body.String())
 	})
 
 	t.Run("success", func(t *testing.T) {
 		s := newSrv(t, newGeographyGraph(t))
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/geography/Arawakan", nil), "id", "Arawakan")
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/geography/Arawakan", nil), "id", "Arawakan")
 		w := httptest.NewRecorder()
-		s.handleGetGeography(w, r)
+		HandleGetGeography(s, w, r)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		var resp map[string]any
@@ -102,16 +104,16 @@ func TestHandleGetGeography(t *testing.T) {
 	})
 
 	t.Run("rounds up all matching nodes", func(t *testing.T) {
-		graph := &fakeGraphStore{executeFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
+		graph := &testutil.FakeGraphStore{ExecuteFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
 			return &neo4j.EagerResult{Records: []*neo4j.Record{
-				fakeRecord([]string{"json", "props"}, []any{`{"type":"Point","coordinates":[0,0]}`, `{"name":"a"}`}),
-				fakeRecord([]string{"json", "props"}, []any{`{"type":"Point","coordinates":[1,1]}`, `{"name":"b"}`}),
+				testutil.FakeRecord([]string{"json", "props"}, []any{`{"type":"Point","coordinates":[0,0]}`, `{"name":"a"}`}),
+				testutil.FakeRecord([]string{"json", "props"}, []any{`{"type":"Point","coordinates":[1,1]}`, `{"name":"b"}`}),
 			}}, nil
 		}}
 		s := newSrv(t, graph)
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/geography/Multi", nil), "id", "Multi")
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/geography/Multi", nil), "id", "Multi")
 		w := httptest.NewRecorder()
-		s.handleGetGeography(w, r)
+		HandleGetGeography(s, w, r)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		var resp map[string]any
@@ -122,15 +124,15 @@ func TestHandleGetGeography(t *testing.T) {
 	})
 
 	t.Run("uses ADMIN as name when no name present", func(t *testing.T) {
-		graph := &fakeGraphStore{executeFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
+		graph := &testutil.FakeGraphStore{ExecuteFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
 			return &neo4j.EagerResult{Records: []*neo4j.Record{
-				fakeRecord([]string{"json", "props"}, []any{`{"type":"Point","coordinates":[0,0]}`, `{"ADMIN":"Zimbabwe"}`}),
+				testutil.FakeRecord([]string{"json", "props"}, []any{`{"type":"Point","coordinates":[0,0]}`, `{"ADMIN":"Zimbabwe"}`}),
 			}}, nil
 		}}
 		s := newSrv(t, graph)
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/geography/BritishEmpire", nil), "id", "BritishEmpire")
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/geography/BritishEmpire", nil), "id", "BritishEmpire")
 		w := httptest.NewRecorder()
-		s.handleGetGeography(w, r)
+		HandleGetGeography(s, w, r)
 
 		var resp map[string]any
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
@@ -140,15 +142,15 @@ func TestHandleGetGeography(t *testing.T) {
 	})
 
 	t.Run("falls back to id when properties empty", func(t *testing.T) {
-		graph := &fakeGraphStore{executeFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
+		graph := &testutil.FakeGraphStore{ExecuteFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
 			return &neo4j.EagerResult{Records: []*neo4j.Record{
-				fakeRecord([]string{"json", "props"}, []any{`{"type":"Point","coordinates":[0,0]}`, `{}`}),
+				testutil.FakeRecord([]string{"json", "props"}, []any{`{"type":"Point","coordinates":[0,0]}`, `{}`}),
 			}}, nil
 		}}
 		s := newSrv(t, graph)
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/geography/England", nil), "id", "England")
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/geography/England", nil), "id", "England")
 		w := httptest.NewRecorder()
-		s.handleGetGeography(w, r)
+		HandleGetGeography(s, w, r)
 
 		var resp map[string]any
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
@@ -158,13 +160,13 @@ func TestHandleGetGeography(t *testing.T) {
 	})
 
 	t.Run("query error", func(t *testing.T) {
-		graph := &fakeGraphStore{executeFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
+		graph := &testutil.FakeGraphStore{ExecuteFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
 			return nil, assert.AnError
 		}}
 		s := newSrv(t, graph)
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/geography/test", nil), "id", "test")
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/geography/test", nil), "id", "test")
 		w := httptest.NewRecorder()
-		s.handleGetGeography(w, r)
+		HandleGetGeography(s, w, r)
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 	})
 }

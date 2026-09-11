@@ -1,11 +1,11 @@
-package server
+package geography
 
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/jmuszka/larynx/internal/server/endpoints"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
 )
 
@@ -17,16 +17,10 @@ const (
 )
 
 type geographyResponse struct {
-	GeoJSON geoJSON `json:"geojson"`
+	GeoJSON endpoints.GeoJSON `json:"geojson"`
 }
 
-func (s *Server) geographyRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Get("/{id}", s.handleGetGeography)
-	return r
-}
-
-// handleGetGeography godoc
+// HandleGetGeography godoc
 // @Summary      Get geography by name
 // @Description  Returns a GeoJSON FeatureCollection for every Geography node whose name matches the id.
 // @Tags         geography
@@ -38,21 +32,21 @@ func (s *Server) geographyRouter() http.Handler {
 // @Failure      500  {object}  map[string]string
 // @Security     BearerAuth
 // @Router       /geography/{id} [get]
-func (s *Server) handleGetGeography(w http.ResponseWriter, r *http.Request) {
-	id := unescapeParam(r, "id")
+func HandleGetGeography(s *endpoints.Server, w http.ResponseWriter, r *http.Request) {
+	id := endpoints.UnescapeParam(r, "id")
 	if len(id) == 0 {
-		s.writeJSONError(w, http.StatusBadRequest, "ID is required")
+		s.WriteJSONError(w, http.StatusBadRequest, "ID is required")
 		return
 	}
 	if len(id) > maxGeographyNameLength {
-		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("ID exceeds maximum length of %d characters", maxGeographyNameLength))
+		s.WriteJSONError(w, http.StatusBadRequest, fmt.Sprintf("ID exceeds maximum length of %d characters", maxGeographyNameLength))
 		return
 	}
 
 	// Check if response exists in cache
-	val, err := s.cache.Get(r.Context(), r.RequestURI)
+	val, err := s.Cache.Get(r.Context(), r.RequestURI)
 	if err == nil {
-		s.writeRawJSON(w, http.StatusOK, []byte(val))
+		s.WriteRawJSON(w, http.StatusOK, []byte(val))
 		return
 	}
 
@@ -64,21 +58,21 @@ func (s *Server) handleGetGeography(w http.ResponseWriter, r *http.Request) {
 		RETURN g.geometryJSON AS json, g.properties AS props
 	`
 	params := map[string]any{"id": id}
-	s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
-	result, err := s.graph.ExecuteQuery(r.Context(), cypher,
+	s.Logger.Debug("CYPHER: " + endpoints.RenderCypher(cypher, params))
+	result, err := s.Graph.ExecuteQuery(r.Context(), cypher,
 		params, neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
-		s.logger.Error("failed to execute geography query", "error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "Failed to execute query")
+		s.Logger.Error("failed to execute geography query", "error", err)
+		s.WriteJSONError(w, http.StatusInternalServerError, "Failed to execute query")
 		return
 	}
 
 	if len(result.Records) == 0 {
-		s.writeJSONError(w, http.StatusNotFound, "Geography not found")
+		s.WriteJSONError(w, http.StatusNotFound, "Geography not found")
 		return
 	}
 
-	features := make([]feature, 0, len(result.Records))
+	features := make([]endpoints.Feature, 0, len(result.Records))
 	for _, record := range result.Records {
 		geometryJSON, _ := record.Get("json")
 		geometryStr, _ := geometryJSON.(string)
@@ -98,7 +92,7 @@ func (s *Server) handleGetGeography(w http.ResponseWriter, r *http.Request) {
 		props["name"] = polygonName(props, id)
 		props["count"] = geographyWeight
 
-		features = append(features, feature{
+		features = append(features, endpoints.Feature{
 			Type:       "Feature",
 			Properties: props,
 			Geometry:   geometry,
@@ -106,7 +100,7 @@ func (s *Server) handleGetGeography(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := geographyResponse{
-		GeoJSON: geoJSON{
+		GeoJSON: endpoints.GeoJSON{
 			Type:     "FeatureCollection",
 			Features: features,
 		},
@@ -115,12 +109,12 @@ func (s *Server) handleGetGeography(w http.ResponseWriter, r *http.Request) {
 	// Write to cache so that future queries are quick
 	encoded, err := json.Marshal(response)
 	if err != nil {
-		s.logger.Error("failed to marshal response", "error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "Failed to encode response")
+		s.Logger.Error("failed to marshal response", "error", err)
+		s.WriteJSONError(w, http.StatusInternalServerError, "Failed to encode response")
 		return
 	}
-	s.writeRawJSON(w, http.StatusOK, encoded)
-	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
+	s.WriteRawJSON(w, http.StatusOK, encoded)
+	s.Cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
 
 // polygonName resolves a polygon's display name from its source properties,

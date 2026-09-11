@@ -1,4 +1,4 @@
-package server
+package words
 
 import (
 	"encoding/json"
@@ -11,8 +11,7 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/httprate"
+	"github.com/jmuszka/larynx/internal/server/endpoints"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
 )
 
@@ -22,19 +21,10 @@ var (
 	familyCodeRegexp = regexp.MustCompile(`\[([A-Za-z0-9]+)\]`)
 )
 
-func (s *Server) wordsRouter() http.Handler {
-	r := chi.NewRouter()
-
-	r.With(httprate.LimitBy(rateLimitEtymologyPerIP, rateLimitWindow, clientIPKey, httprate.WithLimitHandler(rateLimitHandler))).Get("/{word}/etymology", s.handleGetEtymology)
-	r.With(httprate.LimitBy(rateLimitHistoryPerIP, rateLimitWindow, clientIPKey, httprate.WithLimitHandler(rateLimitHandler))).Get("/{word}/history", s.handleGetHistory)
-	r.Get("/", s.handleSearchWords)
-	return r
-}
-
 type etymologyResponse struct {
-	Graph      []map[string]any `json:"graph"`
-	FamilyTree *familyNode      `json:"familyTree"`
-	GeoJSON    geoJSON          `json:"geojson"`
+	Graph      []map[string]any  `json:"graph"`
+	FamilyTree *familyNode       `json:"familyTree"`
+	GeoJSON    endpoints.GeoJSON `json:"geojson"`
 }
 
 type familyNode struct {
@@ -51,17 +41,6 @@ type familyNode struct {
 type familyRef struct {
 	name       string
 	glottocode string
-}
-
-type geoJSON struct {
-	Type     string    `json:"type" example:"FeatureCollection"`
-	Features []feature `json:"features"`
-}
-
-type feature struct {
-	Type       string         `json:"type" example:"Feature"`
-	Properties map[string]any `json:"properties"`
-	Geometry   map[string]any `json:"geometry"`
 }
 
 // Note: in the Wikitionary dataset, the longest word was empirically measured at 204 characters and longest language at 58 characters
@@ -94,11 +73,11 @@ const (
 // @Failure      500   {object}  map[string]string
 // @Security     BearerAuth
 // @Router       /words/{word}/etymology [get]
-func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
+func HandleGetEtymology(s *endpoints.Server, w http.ResponseWriter, r *http.Request) {
 	// Input validation
 	lang := r.URL.Query().Get("lang")
 	if len(lang) > maxLangLength {
-		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("Lang exceeds maximum length of %d characters", maxLangLength))
+		s.WriteJSONError(w, http.StatusBadRequest, fmt.Sprintf("Lang exceeds maximum length of %d characters", maxLangLength))
 		return
 	}
 
@@ -126,20 +105,20 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Input validation
-	word := unescapeParam(r, "word")
+	word := endpoints.UnescapeParam(r, "word")
 	if len(word) == 0 {
-		s.writeJSONError(w, http.StatusBadRequest, "Word is required")
+		s.WriteJSONError(w, http.StatusBadRequest, "Word is required")
 		return
 	}
 	if len(word) > maxWordLength {
-		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("Word exceeds maximum length of %d characters", maxWordLength))
+		s.WriteJSONError(w, http.StatusBadRequest, fmt.Sprintf("Word exceeds maximum length of %d characters", maxWordLength))
 		return
 	}
 
 	// Check if response exists in cache
-	val, err := s.cache.Get(r.Context(), r.RequestURI)
+	val, err := s.Cache.Get(r.Context(), r.RequestURI)
 	if err == nil {
-		s.writeRawJSON(w, http.StatusOK, []byte(val))
+		s.WriteRawJSON(w, http.StatusOK, []byte(val))
 		return
 	}
 
@@ -154,17 +133,17 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		"word": word,
 		"lang": lang,
 	}
-	s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
-	result, err := s.graph.ExecuteQuery(r.Context(), cypher,
+	s.Logger.Debug("CYPHER: " + endpoints.RenderCypher(cypher, params))
+	result, err := s.Graph.ExecuteQuery(r.Context(), cypher,
 		params, neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
-		s.logger.Error("failed to execute etymology query", "error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "Failed to execute query")
+		s.Logger.Error("failed to execute etymology query", "error", err)
+		s.WriteJSONError(w, http.StatusInternalServerError, "Failed to execute query")
 		return
 	}
 
 	if len(result.Records) == 0 {
-		s.writeJSONError(w, http.StatusNotFound, "Word not found")
+		s.WriteJSONError(w, http.StatusNotFound, "Word not found")
 		return
 	}
 
@@ -250,12 +229,12 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		params = map[string]any{
 			"langs": langNames,
 		}
-		s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
-		result, err = s.graph.ExecuteQuery(r.Context(), cypher,
+		s.Logger.Debug("CYPHER: " + endpoints.RenderCypher(cypher, params))
+		result, err = s.Graph.ExecuteQuery(r.Context(), cypher,
 			params, neo4j.ExecuteQueryWithDatabase("neo4j"))
 		if err != nil {
-			s.logger.Error("failed to execute families query", "error", err)
-			s.writeJSONError(w, http.StatusInternalServerError, "Failed to execute query")
+			s.Logger.Error("failed to execute families query", "error", err)
+			s.WriteJSONError(w, http.StatusInternalServerError, "Failed to execute query")
 			return
 		}
 
@@ -327,16 +306,16 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 		`
 		params = map[string]any{"langs": langNames, "w1": tier1Weight, "w2": tier2Weight, "w3": tier3Weight}
 
-		s.logger.Debug("CYPHER: " + renderCypher(cypher, params))
-		result, err = s.graph.ExecuteQuery(
+		s.Logger.Debug("CYPHER: " + endpoints.RenderCypher(cypher, params))
+		result, err = s.Graph.ExecuteQuery(
 			r.Context(),
 			cypher,
 			params,
 			neo4j.ExecuteQueryWithReadersRouting(), // Routes optimization for read-only query
 		)
 		if err != nil {
-			s.logger.Error("failed to execute geojson query", "error", err)
-			s.writeJSONError(w, http.StatusInternalServerError, "Failed to execute query")
+			s.Logger.Error("failed to execute geojson query", "error", err)
+			s.WriteJSONError(w, http.StatusInternalServerError, "Failed to execute query")
 			return
 		}
 
@@ -394,12 +373,12 @@ func (s *Server) handleGetEtymology(w http.ResponseWriter, r *http.Request) {
 	// Write to cache so that future queries are quick
 	encoded, err := json.Marshal(response)
 	if err != nil {
-		s.logger.Error("failed to marshal response", "error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "Failed to encode response")
+		s.Logger.Error("failed to marshal response", "error", err)
+		s.WriteJSONError(w, http.StatusInternalServerError, "Failed to encode response")
 		return
 	}
-	s.writeRawJSON(w, http.StatusOK, encoded)
-	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
+	s.WriteRawJSON(w, http.StatusOK, encoded)
+	s.Cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
 
 type historyResponse struct {
@@ -421,57 +400,57 @@ type historyResponse struct {
 // @Failure      502   {object}  map[string]string
 // @Security     BearerAuth
 // @Router       /words/{word}/history [get]
-func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
+func HandleGetHistory(s *endpoints.Server, w http.ResponseWriter, r *http.Request) {
 	lang := r.URL.Query().Get("lang")
 	if len(lang) > maxLangLength {
-		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("Lang exceeds maximum length of %d characters", maxLangLength))
+		s.WriteJSONError(w, http.StatusBadRequest, fmt.Sprintf("Lang exceeds maximum length of %d characters", maxLangLength))
 		return
 	}
 	if lang != "" && lang != "English" {
-		s.logger.Warn("history not implemented for non-english")
-		s.writeJSONError(w, http.StatusOK, "History not implemented for non-English")
+		s.Logger.Warn("history not implemented for non-english")
+		s.WriteJSONError(w, http.StatusOK, "History not implemented for non-English")
 		return
 	}
 
 	// Input validation
-	word := unescapeParam(r, "word")
+	word := endpoints.UnescapeParam(r, "word")
 	if len(word) == 0 {
-		s.writeJSONError(w, http.StatusBadRequest, "Word is required")
+		s.WriteJSONError(w, http.StatusBadRequest, "Word is required")
 		return
 	}
 	if len(word) > maxWordLength {
-		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("Word exceeds maximum length of %d characters", maxWordLength))
+		s.WriteJSONError(w, http.StatusBadRequest, fmt.Sprintf("Word exceeds maximum length of %d characters", maxWordLength))
 		return
 	}
 
 	// Check if response exists in cache
-	val, err := s.cache.Get(r.Context(), r.RequestURI)
+	val, err := s.Cache.Get(r.Context(), r.RequestURI)
 	if err == nil {
-		s.writeRawJSON(w, http.StatusOK, []byte(val))
+		s.WriteRawJSON(w, http.StatusOK, []byte(val))
 		return
 	}
 
-	req, err := http.NewRequestWithContext(r.Context(), "GET", s.cfg.EtymologyBaseURL+"/word/"+neturl.PathEscape(word), nil)
+	req, err := http.NewRequestWithContext(r.Context(), "GET", s.EtymologyBaseURL+"/word/"+neturl.PathEscape(word), nil)
 	if err != nil {
-		s.logger.Error("failed to build request", "error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "Failed to build request")
+		s.Logger.Error("failed to build request", "error", err)
+		s.WriteJSONError(w, http.StatusInternalServerError, "Failed to build request")
 		return
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.HTTPClient.Do(req)
 	if err != nil {
-		s.logger.Error("failed to fetch etymology page", "error", err)
-		s.writeJSONError(w, http.StatusBadGateway, "Failed to fetch etymology source")
+		s.Logger.Error("failed to fetch etymology page", "error", err)
+		s.WriteJSONError(w, http.StatusBadGateway, "Failed to fetch etymology source")
 		return
 	}
 	defer resp.Body.Close()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
-		s.logger.Error("failed to parse HTML", "error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "Failed to parse etymology source")
+		s.Logger.Error("failed to parse HTML", "error", err)
+		s.WriteJSONError(w, http.StatusInternalServerError, "Failed to parse etymology source")
 		return
 	}
 
@@ -508,7 +487,7 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if len(entries) == 0 {
-		s.writeJSONError(w, http.StatusNotFound, "No etymology entry found")
+		s.WriteJSONError(w, http.StatusNotFound, "No etymology entry found")
 		return
 	}
 
@@ -519,13 +498,13 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 		raw.WriteString(e.Text + "\n\n")
 	}
 
-	history, err := s.ai.Prompt(r.Context(),
+	history, err := s.AI.Prompt(r.Context(),
 		"You are a concise etymology assistant. Summarize the source text in 1-2 short, direct sentences covering the word's origin and key historical stages. Preserve all essential facts; add no filler or commentary.",
 		fmt.Sprintf("%s\n\nSummarize the origin and history of %q in 1-2 concise sentences, preserving key information.", raw.String(), word),
 	)
 	if err != nil {
-		s.logger.Error("LLM formatting failed", "error", err)
-		s.writeJSONError(w, http.StatusBadGateway, "Failed to retrieve history summary")
+		s.Logger.Error("LLM formatting failed", "error", err)
+		s.WriteJSONError(w, http.StatusBadGateway, "Failed to retrieve history summary")
 		return
 	}
 
@@ -537,12 +516,12 @@ func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
 	// Write to cache so that future queries are quick
 	encoded, err := json.Marshal(response)
 	if err != nil {
-		s.logger.Error("failed to marshal response", "error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "Failed to encode response")
+		s.Logger.Error("failed to marshal response", "error", err)
+		s.WriteJSONError(w, http.StatusInternalServerError, "Failed to encode response")
 		return
 	}
-	s.writeRawJSON(w, http.StatusOK, encoded)
-	s.cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
+	s.WriteRawJSON(w, http.StatusOK, encoded)
+	s.Cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
 }
 
 // cleanEtymologyText decodes HTML entities, strips residual tags, removes ad
@@ -680,17 +659,17 @@ func familyMetadata(chain []interface{}) (family, familyCode, ancestors string) 
 // @Failure      500     {object}  map[string]string
 // @Security     BearerAuth
 // @Router       /words [get]
-func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
+func HandleSearchWords(s *endpoints.Server, w http.ResponseWriter, r *http.Request) {
 	// Parse GET parameters
 	prefix := r.URL.Query().Get("prefix")
 
 	// Input validation
 	if len(prefix) == 0 {
-		s.writeJSONError(w, http.StatusBadRequest, "Prefix is required")
+		s.WriteJSONError(w, http.StatusBadRequest, "Prefix is required")
 		return
 	}
 	if len(prefix) > maxWordLength {
-		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("Prefix exceeds maximum length of %d characters", maxWordLength))
+		s.WriteJSONError(w, http.StatusBadRequest, fmt.Sprintf("Prefix exceeds maximum length of %d characters", maxWordLength))
 		return
 	}
 
@@ -704,12 +683,12 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch search results from Neo4j
 	searchParams := map[string]any{"prefix": prefix}
-	s.logger.Debug("CYPHER: " + renderCypher(query, searchParams))
-	result, err := s.graph.ExecuteQuery(r.Context(), query,
+	s.Logger.Debug("CYPHER: " + endpoints.RenderCypher(query, searchParams))
+	result, err := s.Graph.ExecuteQuery(r.Context(), query,
 		searchParams, neo4j.ExecuteQueryWithDatabase("neo4j"))
 	if err != nil {
-		s.logger.Error("failed to execute search query", "error", err)
-		s.writeJSONError(w, http.StatusInternalServerError, "Failed to execute query")
+		s.Logger.Error("failed to execute search query", "error", err)
+		s.WriteJSONError(w, http.StatusInternalServerError, "Failed to execute query")
 		return
 	}
 
@@ -723,13 +702,5 @@ func (s *Server) handleSearchWords(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.writeJSON(w, http.StatusOK, terms)
-}
-
-func unescapeParam(r *http.Request, param string) string {
-	word := chi.URLParam(r, param)
-	if decoded, err := neturl.PathUnescape(word); err == nil {
-		return decoded
-	}
-	return word
+	s.WriteJSON(w, http.StatusOK, terms)
 }

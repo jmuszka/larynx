@@ -1,4 +1,4 @@
-package server
+package health
 
 import (
 	"encoding/json"
@@ -7,15 +7,17 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/jmuszka/larynx/internal/server/endpoints"
+	"github.com/jmuszka/larynx/internal/server/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestHandleHealth(t *testing.T) {
 	t.Run("healthy", func(t *testing.T) {
-		s := &Server{logger: testLogger(t), graph: &fakeGraphStore{}, version: "preview"}
+		s := endpoints.New(endpoints.Config{Logger: testutil.TestLogger(t), Graph: &testutil.FakeGraphStore{}, Version: "preview"})
 		w := httptest.NewRecorder()
-		s.handleHealth(w, httptest.NewRequest(http.MethodGet, "/", nil))
+		HandleHealth(s, w, httptest.NewRequest(http.MethodGet, "/", nil))
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		var resp healthResponse
@@ -27,9 +29,9 @@ func TestHandleHealth(t *testing.T) {
 	})
 
 	t.Run("degraded", func(t *testing.T) {
-		s := &Server{logger: testLogger(t), graph: &fakeGraphStore{connErr: errors.New("down")}, version: "preview"}
+		s := endpoints.New(endpoints.Config{Logger: testutil.TestLogger(t), Graph: &testutil.FakeGraphStore{ConnErr: errors.New("down")}, Version: "preview"})
 		w := httptest.NewRecorder()
-		s.handleHealth(w, httptest.NewRequest(http.MethodGet, "/", nil))
+		HandleHealth(s, w, httptest.NewRequest(http.MethodGet, "/", nil))
 
 		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 		var resp healthResponse

@@ -1,4 +1,4 @@
-package server
+package words
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/jmuszka/larynx/internal/ai"
+	"github.com/jmuszka/larynx/internal/server/endpoints"
+	"github.com/jmuszka/larynx/internal/server/testutil"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -157,33 +159,33 @@ func TestFamilyMetadata(t *testing.T) {
 }
 
 func TestUnescapeParam(t *testing.T) {
-	r := withURLParam(httptest.NewRequest(http.MethodGet, "/", nil), "word", "caf%C3%A9")
-	assert.Equal(t, "café", unescapeParam(r, "word"))
+	r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/", nil), "word", "caf%C3%A9")
+	assert.Equal(t, "café", endpoints.UnescapeParam(r, "word"))
 }
 
-func newEtymologyGraph(t *testing.T) *fakeGraphStore {
+func newEtymologyGraph(t *testing.T) *testutil.FakeGraphStore {
 	t.Helper()
 	calls := 0
-	return &fakeGraphStore{
-		executeFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
+	return &testutil.FakeGraphStore{
+		ExecuteFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
 			calls++
 			switch calls {
 			case 1:
 				return &neo4j.EagerResult{Records: []*neo4j.Record{
-					fakeRecord([]string{"path"}, []any{neo4j.Path{Nodes: []neo4j.Node{
+					testutil.FakeRecord([]string{"path"}, []any{neo4j.Path{Nodes: []neo4j.Node{
 						{Props: map[string]any{"lang": "English", "ipa": "/wɜːd/"}},
 					}}}),
 				}}, nil
 			case 2:
 				return &neo4j.EagerResult{Records: []*neo4j.Record{
-					fakeRecord([]string{"lineage"}, []any{[]any{
+					testutil.FakeRecord([]string{"lineage"}, []any{[]any{
 						map[string]any{"name": "Indo-European", "glottocode": "indo1319"},
 						map[string]any{"name": "Germanic", "glottocode": "germ1287"},
 					}}),
 				}}, nil
 			case 3:
 				return &neo4j.EagerResult{Records: []*neo4j.Record{
-					fakeRecord(
+					testutil.FakeRecord(
 						[]string{"id", "name", "json", "count", "chain"},
 						[]any{
 							"olde1238",
@@ -205,54 +207,54 @@ func newEtymologyGraph(t *testing.T) *fakeGraphStore {
 }
 
 func TestHandleGetEtymology(t *testing.T) {
-	newSrv := func(t *testing.T, graph graphStore) *Server {
-		return &Server{logger: testLogger(t), graph: graph, cache: newServerCache(t)}
+	newSrv := func(t *testing.T, graph endpoints.GraphStore) *endpoints.Server {
+		return endpoints.New(endpoints.Config{Logger: testutil.TestLogger(t), Graph: graph, Cache: testutil.NewServerCache(t)})
 	}
 
 	t.Run("missing word", func(t *testing.T) {
-		s := newSrv(t, &fakeGraphStore{})
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/", nil), "word", "")
+		s := newSrv(t, &testutil.FakeGraphStore{})
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/", nil), "word", "")
 		w := httptest.NewRecorder()
-		s.handleGetEtymology(w, r)
+		HandleGetEtymology(s, w, r)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		assert.JSONEq(t, `{"error":"Word is required"}`, w.Body.String())
 	})
 
 	t.Run("word too long", func(t *testing.T) {
-		s := newSrv(t, &fakeGraphStore{})
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/", nil), "word", strings.Repeat("a", maxWordLength+1))
+		s := newSrv(t, &testutil.FakeGraphStore{})
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/", nil), "word", strings.Repeat("a", maxWordLength+1))
 		w := httptest.NewRecorder()
-		s.handleGetEtymology(w, r)
+		HandleGetEtymology(s, w, r)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 
 	t.Run("lang too long", func(t *testing.T) {
-		s := newSrv(t, &fakeGraphStore{})
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/?lang="+strings.Repeat("a", maxLangLength+1), nil), "word", "test")
+		s := newSrv(t, &testutil.FakeGraphStore{})
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/?lang="+strings.Repeat("a", maxLangLength+1), nil), "word", "test")
 		w := httptest.NewRecorder()
-		s.handleGetEtymology(w, r)
+		HandleGetEtymology(s, w, r)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 
 	t.Run("cache hit", func(t *testing.T) {
-		graph := &fakeGraphStore{}
+		graph := &testutil.FakeGraphStore{}
 		s := newSrv(t, graph)
-		require.NoError(t, s.cache.Set(t.Context(), "/words/test/etymology", `{"cached":true}`, 0))
+		require.NoError(t, s.Cache.Set(t.Context(), "/words/test/etymology", `{"cached":true}`, 0))
 
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/words/test/etymology", nil), "word", "test")
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/words/test/etymology", nil), "word", "test")
 		w := httptest.NewRecorder()
-		s.handleGetEtymology(w, r)
+		HandleGetEtymology(s, w, r)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.JSONEq(t, `{"cached":true}`, w.Body.String())
-		assert.Empty(t, graph.queries)
+		assert.Empty(t, graph.Queries)
 	})
 
 	t.Run("word not found", func(t *testing.T) {
-		s := newSrv(t, &fakeGraphStore{})
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/words/bluetooth/etymology", nil), "word", "bluetooth")
+		s := newSrv(t, &testutil.FakeGraphStore{})
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/words/bluetooth/etymology", nil), "word", "bluetooth")
 		w := httptest.NewRecorder()
-		s.handleGetEtymology(w, r)
+		HandleGetEtymology(s, w, r)
 		assert.Equal(t, http.StatusNotFound, w.Code)
 		assert.JSONEq(t, `{"error":"Word not found"}`, w.Body.String())
 	})
@@ -260,9 +262,9 @@ func TestHandleGetEtymology(t *testing.T) {
 	t.Run("success with geojson", func(t *testing.T) {
 		graph := newEtymologyGraph(t)
 		s := newSrv(t, graph)
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/words/test/etymology", nil), "word", "test")
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/words/test/etymology", nil), "word", "test")
 		w := httptest.NewRecorder()
-		s.handleGetEtymology(w, r)
+		HandleGetEtymology(s, w, r)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		var resp map[string]any
@@ -301,9 +303,9 @@ func TestHandleGetEtymology(t *testing.T) {
 	t.Run("skip geojson", func(t *testing.T) {
 		graph := newEtymologyGraph(t)
 		s := newSrv(t, graph)
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/words/test/etymology?geojson=false", nil), "word", "test")
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/words/test/etymology?geojson=false", nil), "word", "test")
 		w := httptest.NewRecorder()
-		s.handleGetEtymology(w, r)
+		HandleGetEtymology(s, w, r)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		var resp map[string]any
@@ -314,9 +316,9 @@ func TestHandleGetEtymology(t *testing.T) {
 	t.Run("skip family", func(t *testing.T) {
 		graph := newEtymologyGraph(t)
 		s := newSrv(t, graph)
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/words/test/etymology?family=false", nil), "word", "test")
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/words/test/etymology?family=false", nil), "word", "test")
 		w := httptest.NewRecorder()
-		s.handleGetEtymology(w, r)
+		HandleGetEtymology(s, w, r)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		var resp map[string]any
@@ -325,40 +327,40 @@ func TestHandleGetEtymology(t *testing.T) {
 	})
 
 	t.Run("query error", func(t *testing.T) {
-		graph := &fakeGraphStore{executeFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
+		graph := &testutil.FakeGraphStore{ExecuteFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
 			return nil, assert.AnError
 		}}
 		s := newSrv(t, graph)
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/words/test/etymology", nil), "word", "test")
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/words/test/etymology", nil), "word", "test")
 		w := httptest.NewRecorder()
-		s.handleGetEtymology(w, r)
+		HandleGetEtymology(s, w, r)
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 	})
 }
 
 func TestHandleSearchWords(t *testing.T) {
-	newSrv := func(t *testing.T, graph graphStore) *Server {
-		return &Server{logger: testLogger(t), graph: graph, cache: newServerCache(t)}
+	newSrv := func(t *testing.T, graph endpoints.GraphStore) *endpoints.Server {
+		return endpoints.New(endpoints.Config{Logger: testutil.TestLogger(t), Graph: graph, Cache: testutil.NewServerCache(t)})
 	}
 
 	t.Run("missing prefix", func(t *testing.T) {
-		s := newSrv(t, &fakeGraphStore{})
+		s := newSrv(t, &testutil.FakeGraphStore{})
 		w := httptest.NewRecorder()
-		s.handleSearchWords(w, httptest.NewRequest(http.MethodGet, "/", nil))
+		HandleSearchWords(s, w, httptest.NewRequest(http.MethodGet, "/", nil))
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		assert.JSONEq(t, `{"error":"Prefix is required"}`, w.Body.String())
 	})
 
 	t.Run("success", func(t *testing.T) {
-		graph := &fakeGraphStore{executeFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
+		graph := &testutil.FakeGraphStore{ExecuteFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
 			return &neo4j.EagerResult{Records: []*neo4j.Record{
-				fakeRecord([]string{"term"}, []any{"cat"}),
-				fakeRecord([]string{"term"}, []any{"catapult"}),
+				testutil.FakeRecord([]string{"term"}, []any{"cat"}),
+				testutil.FakeRecord([]string{"term"}, []any{"catapult"}),
 			}}, nil
 		}}
 		s := newSrv(t, graph)
 		w := httptest.NewRecorder()
-		s.handleSearchWords(w, httptest.NewRequest(http.MethodGet, "/?prefix=cat", nil))
+		HandleSearchWords(s, w, httptest.NewRequest(http.MethodGet, "/?prefix=cat", nil))
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		var terms []string
@@ -385,31 +387,30 @@ func chatCompletionServer(t *testing.T, content string, status int) string {
 }
 
 func TestHandleGetHistory(t *testing.T) {
-	newSrv := func(t *testing.T, baseURL, aiURL string) *Server {
-		s := &Server{logger: testLogger(t), cache: newServerCache(t), httpClient: &http.Client{}}
-		s.cfg.EtymologyBaseURL = baseURL
+	newSrv := func(t *testing.T, baseURL, aiURL string) *endpoints.Server {
+		s := endpoints.New(endpoints.Config{Logger: testutil.TestLogger(t), Cache: testutil.NewServerCache(t), HTTPClient: &http.Client{}, EtymologyBaseURL: baseURL})
 		if aiURL != "" {
 			svc, err := ai.New(ai.Config{BaseURL: aiURL, Model: "test"})
 			require.NoError(t, err)
-			s.ai = svc
+			s.AI = svc
 		}
 		return s
 	}
 
 	t.Run("missing word", func(t *testing.T) {
 		s := newSrv(t, "http://x", "")
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/", nil), "word", "")
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/", nil), "word", "")
 		w := httptest.NewRecorder()
-		s.handleGetHistory(w, r)
+		HandleGetHistory(s, w, r)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		assert.JSONEq(t, `{"error":"Word is required"}`, w.Body.String())
 	})
 
 	t.Run("non-english lang", func(t *testing.T) {
 		s := newSrv(t, "http://x", "")
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/?lang=French", nil), "word", "test")
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/?lang=French", nil), "word", "test")
 		w := httptest.NewRecorder()
-		s.handleGetHistory(w, r)
+		HandleGetHistory(s, w, r)
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.JSONEq(t, `{"error":"History not implemented for non-English"}`, w.Body.String())
 	})
@@ -421,9 +422,9 @@ func TestHandleGetHistory(t *testing.T) {
 		t.Cleanup(src.Close)
 
 		s := newSrv(t, src.URL, chatCompletionServer(t, "Test origin sentence.", http.StatusOK))
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/words/test/history", nil), "word", "test")
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/words/test/history", nil), "word", "test")
 		w := httptest.NewRecorder()
-		s.handleGetHistory(w, r)
+		HandleGetHistory(s, w, r)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		var resp map[string]any
@@ -439,9 +440,9 @@ func TestHandleGetHistory(t *testing.T) {
 		t.Cleanup(src.Close)
 
 		s := newSrv(t, src.URL, chatCompletionServer(t, "", http.StatusInternalServerError))
-		r := withURLParam(httptest.NewRequest(http.MethodGet, "/words/test/history", nil), "word", "test")
+		r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/words/test/history", nil), "word", "test")
 		w := httptest.NewRecorder()
-		s.handleGetHistory(w, r)
+		HandleGetHistory(s, w, r)
 
 		assert.Equal(t, http.StatusBadGateway, w.Code)
 		assert.JSONEq(t, `{"error":"Failed to retrieve history summary"}`, w.Body.String())

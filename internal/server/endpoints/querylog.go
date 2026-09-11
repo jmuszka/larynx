@@ -1,4 +1,4 @@
-package server
+package endpoints
 
 import (
 	"fmt"
@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-// renderCypher interpolates $param placeholders in a Cypher query with their
+// RenderCypher interpolates $param placeholders in a Cypher query with their
 // actual values, for logging/debugging purposes only.
-func renderCypher(query string, params map[string]any) string {
+func RenderCypher(query string, params map[string]any) string {
 	keys := make([]string, 0, len(params))
 	for k := range params {
 		keys = append(keys, k)
@@ -17,7 +17,7 @@ func renderCypher(query string, params map[string]any) string {
 
 	rendered := query
 	for _, k := range keys {
-		rendered = strings.ReplaceAll(rendered, "$"+k, renderCypherValue(params[k]))
+		rendered = strings.ReplaceAll(rendered, "$"+k, RenderCypherValue(params[k]))
 	}
 	return flatten(rendered)
 }
@@ -35,7 +35,7 @@ func flatten(s string) string {
 	return strings.Join(out, " ")
 }
 
-func renderCypherValue(v any) string {
+func RenderCypherValue(v any) string {
 	switch val := v.(type) {
 	case string:
 		return "'" + val + "'"
@@ -48,7 +48,7 @@ func renderCypherValue(v any) string {
 	case []any:
 		parts := make([]string, len(val))
 		for i, e := range val {
-			parts[i] = renderCypherValue(e)
+			parts[i] = RenderCypherValue(e)
 		}
 		return "[" + strings.Join(parts, ", ") + "]"
 	default:
@@ -58,15 +58,15 @@ func renderCypherValue(v any) string {
 
 // renderSQL interpolates ? placeholders in a SQL query with their actual
 // values, for logging/debugging purposes only.
-func renderSQL(query string, args []any) string {
+func RenderSQL(query string, args []any) string {
 	rendered := query
 	for _, a := range args {
-		rendered = strings.Replace(rendered, "?", renderSQLValue(a), 1)
+		rendered = strings.Replace(rendered, "?", RenderSQLValue(a), 1)
 	}
 	return flatten(rendered)
 }
 
-func renderSQLValue(v any) string {
+func RenderSQLValue(v any) string {
 	switch val := v.(type) {
 	case string:
 		return "'" + val + "'"
