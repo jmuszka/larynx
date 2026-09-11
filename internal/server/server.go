@@ -12,6 +12,7 @@ import (
 	"github.com/jmuszka/larynx/internal/ai"
 	"github.com/jmuszka/larynx/internal/cache"
 	"github.com/jmuszka/larynx/internal/logging"
+	"github.com/jmuszka/larynx/internal/server/endpoints"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
 	"github.com/redis/go-redis/v9"
 	_ "modernc.org/sqlite"
@@ -44,7 +45,7 @@ type Server struct {
 	*http.Server
 	cfg        Config
 	logger     *logging.Service
-	graph      graphStore
+	eps        *endpoints.Server
 	db         *sql.DB
 	cache      *cache.Cache
 	ai         *ai.Service
@@ -114,7 +115,25 @@ func New(cfg Config) *Server {
 	}
 	cfg.Logger.Info("ai service initialized")
 
-	s := &Server{cfg: cfg, logger: cfg.Logger, graph: &neo4jStore{driver: driver}, db: db, version: cfg.Version, cache: cache, ai: aiService, httpClient: httpClient}
+	s := &Server{
+		cfg:        cfg,
+		logger:     cfg.Logger,
+		db:         db,
+		version:    cfg.Version,
+		cache:      cache,
+		ai:         aiService,
+		httpClient: httpClient,
+		eps: endpoints.New(endpoints.Config{
+			Logger:           cfg.Logger,
+			Graph:            &neo4jStore{driver: driver},
+			DB:               db,
+			Cache:            cache,
+			AI:               aiService,
+			HTTPClient:       httpClient,
+			Version:          cfg.Version,
+			EtymologyBaseURL: cfg.EtymologyBaseURL,
+		}),
+	}
 
 	// Routing
 	r := chi.NewRouter()

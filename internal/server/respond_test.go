@@ -5,13 +5,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/jmuszka/larynx/internal/server/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	return &Server{logger: testLogger(t)}
+	return &Server{logger: testutil.TestLogger(t)}
 }
 
 func TestWriteJSON(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jmuszka/larynx/internal/server/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,7 +34,7 @@ func okHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func TestBearerAuth(t *testing.T) {
-	s := &Server{logger: testLogger(t), cfg: Config{BearerTokens: []string{"token-a", "token-b"}}}
+	s := &Server{logger: testutil.TestLogger(t), cfg: Config{BearerTokens: []string{"token-a", "token-b"}}}
 
 	tests := []struct {
 		name       string
@@ -64,7 +65,7 @@ func TestAdminJWTAuth(t *testing.T) {
 	const subject = "blog-admin"
 
 	newServer := func() *Server {
-		return &Server{logger: testLogger(t), cfg: Config{AdminJWTSecret: secret, AdminJWTSubject: subject}}
+		return &Server{logger: testutil.TestLogger(t), cfg: Config{AdminJWTSecret: secret, AdminJWTSubject: subject}}
 	}
 
 	t.Run("missing token", func(t *testing.T) {
