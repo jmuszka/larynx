@@ -210,7 +210,9 @@ func HandleGetEtymology(s *endpoints.Server, w http.ResponseWriter, r *http.Requ
 		}
 		if ipa == nil {
 			if len(path.Nodes) > 0 {
-				ipa = path.Nodes[0].Props["ipa"]
+				if s, ok := path.Nodes[0].Props["ipa"].(string); ok {
+					ipa = "/" + s + "/"
+				}
 			}
 		}
 
