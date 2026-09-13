@@ -393,6 +393,19 @@ func TestHandleSearchWords(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &terms))
 		assert.Equal(t, []string{"cat", "catapult"}, terms)
 	})
+
+	t.Run("lowercases the prefix before querying", func(t *testing.T) {
+		graph := &testutil.FakeGraphStore{}
+		s := newSrv(t, graph)
+		w := httptest.NewRecorder()
+		HandleSearchWords(s, w, httptest.NewRequest(http.MethodGet, "/?prefix=CaT", nil))
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		require.Len(t, graph.ParamSets, 1)
+		assert.Equal(t, "cat", graph.ParamSets[0]["prefix"])
+		assert.Contains(t, graph.Queries[0], "LIMIT 50")
+		assert.NotContains(t, graph.Queries[0], "toLower")
+	})
 }
 
 func chatCompletionServer(t *testing.T, content string, status int) string {

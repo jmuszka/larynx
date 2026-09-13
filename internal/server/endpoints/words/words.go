@@ -750,12 +750,17 @@ func HandleSearchWords(s *endpoints.Server, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Terms are stored lowercase; lowercasing in Go keeps the predicate a
+	// plain STARTS WITH so the (lang, term) composite index can seek it.
+	prefix = strings.ToLower(prefix)
+
 	// Construct Cypher query
 	const query = `
 		MATCH (n:Word { lang: 'English' })
-		WHERE n.term IS NOT NULL AND n.term STARTS WITH toLower($prefix)
+		WHERE n.term STARTS WITH $prefix
 		RETURN DISTINCT n.term AS term
 		ORDER BY size(term), term ASC
+		LIMIT 50
 	`
 
 	// Fetch search results from Neo4j
