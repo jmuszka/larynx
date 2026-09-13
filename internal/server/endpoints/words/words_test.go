@@ -171,7 +171,7 @@ func TestUnescapeParam(t *testing.T) {
 func newEtymologyGraph(t *testing.T) *testutil.FakeGraphStore {
 	t.Helper()
 	calls := 0
-	head := map[string]any{"term": "test", "lang": "English", "ipa": "/wɜːd/"}
+	head := map[string]any{"term": "test", "lang": "English", "ipa": "wɜːd"}
 	tail := map[string]any{"term": "teste", "lang": "Middle English"}
 	return &testutil.FakeGraphStore{
 		ExecuteFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
@@ -183,7 +183,7 @@ func newEtymologyGraph(t *testing.T) *testutil.FakeGraphStore {
 						head,
 						tail,
 						neo4j.Path{Nodes: []neo4j.Node{
-							{Props: map[string]any{"lang": "English", "ipa": "/wɜːd/"}},
+							{Props: map[string]any{"lang": "English", "ipa": "wɜːd"}},
 						}},
 					}),
 				}}, nil
