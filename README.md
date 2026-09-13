@@ -201,7 +201,7 @@ Relationship subtypes on `CHILD_OF`: `borrowed_from`, `derived_from`, `has_root`
 
 ## Caching
 
-All word endpoints (etymology, history, IPA) check Redis before executing expensive operations. Cache keys are the full request URI. Misses populate the cache with no TTL expiration.
+All word endpoints (etymology, history, IPA) check Redis before executing expensive operations. Cache keys are the request URI with query parameters sorted, plus a `:gzip` suffix for gzip-accepting clients so compressed responses are stored and served without re-encoding. Misses populate the cache with no TTL expiration.
 
 ## Project Structure
 

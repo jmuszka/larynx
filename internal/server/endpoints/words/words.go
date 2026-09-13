@@ -1,6 +1,8 @@
 package words
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -22,9 +24,36 @@ var (
 )
 
 type etymologyResponse struct {
-	Graph      []map[string]any  `json:"graph"`
-	FamilyTree *familyNode       `json:"familyTree"`
-	GeoJSON    endpoints.GeoJSON `json:"geojson"`
+	Graph      graphResponse      `json:"graph"`
+	FamilyTree *familyNode        `json:"familyTree"`
+	GeoJSON    *geoJSONCollection `json:"geojson"`
+	IPA        any                `json:"ipa"`
+}
+
+// graphResponse holds the head word once and the set of longest paths the
+// query returned. The head was previously duplicated in every record. Head
+// and Tail are driver node values, which marshal themselves to JSON.
+type graphResponse struct {
+	Head  any          `json:"head"`
+	Paths []pathRecord `json:"paths"`
+}
+
+type pathRecord struct {
+	Tail any        `json:"tail"`
+	Path neo4j.Path `json:"path" swaggerignore:"true"`
+}
+
+// geoJSONCollection mirrors endpoints.GeoJSON but keeps each geometry as raw
+// JSON so it never needs to be decoded and re-encoded.
+type geoJSONCollection struct {
+	Type     string       `json:"type"`
+	Features []geoFeature `json:"features"`
+}
+
+type geoFeature struct {
+	Type       string          `json:"type"`
+	Properties map[string]any  `json:"properties"`
+	Geometry   json.RawMessage `json:"geometry" swaggerignore:"true"`
 }
 
 type familyNode struct {
@@ -115,8 +144,19 @@ func HandleGetEtymology(s *endpoints.Server, w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Check if response exists in cache
-	val, err := s.Cache.Get(r.Context(), r.RequestURI)
+	// Check if response exists in cache. Gzipped responses are cached
+	// separately so clients that accept gzip skip both re-compression and
+	// re-encoding entirely.
+	cacheKey := etymologyCacheKey(r)
+	if acceptsGzip(r) {
+		if val, err := s.Cache.Get(r.Context(), cacheKey+":gzip"); err == nil {
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Header().Add("Vary", "Accept-Encoding")
+			s.WriteRawJSON(w, http.StatusOK, []byte(val))
+			return
+		}
+	}
+	val, err := s.Cache.Get(r.Context(), cacheKey)
 	if err == nil {
 		s.WriteRawJSON(w, http.StatusOK, []byte(val))
 		return
@@ -151,63 +191,54 @@ func HandleGetEtymology(s *endpoints.Server, w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	records := make([]map[string]any, len(result.Records))
-	familySet := map[string]struct{}{}
-
+	graph := graphResponse{Paths: make([]pathRecord, 0, len(result.Records))}
+	langsSeen := map[string]struct{}{}
+	foreignLangs := map[string]struct{}{}
 	var ipa any
-	// First pass: ignore modern and middle english
-	for i, record := range result.Records {
-		records[i] = record.AsMap()
 
-		path, ok := record.AsMap()["path"].(neo4j.Path)
+	for _, record := range result.Records {
+		pathVal, _ := record.Get("path")
+		path, ok := pathVal.(neo4j.Path)
 		if !ok {
 			continue
 		}
 
-		if i == 0 && len(path.Nodes) > 0 {
-			ipa = path.Nodes[0].Props["ipa"]
+		if graph.Head == nil {
+			if head, _ := record.Get("head"); head != nil {
+				graph.Head = head
+			}
 		}
+		if ipa == nil {
+			if len(path.Nodes) > 0 {
+				ipa = path.Nodes[0].Props["ipa"]
+			}
+		}
+
+		tail, _ := record.Get("tail")
+		graph.Paths = append(graph.Paths, pathRecord{Tail: tail, Path: path})
 
 		for _, node := range path.Nodes {
 			lang, ok := node.Props["lang"].(string)
 			if !ok {
 				continue
 			}
-
+			langsSeen[lang] = struct{}{}
 			// Remove Modern and Middle English to avoid polluting etymological composition
 			if lang != "English" && lang != "Middle English" {
-				familySet[lang] = struct{}{}
+				foreignLangs[lang] = struct{}{}
 			}
 		}
 	}
 
-	// Second pass: if no other languages were found, add English back
-	if len(familySet) == 0 {
-		for i, record := range result.Records {
-			records[i] = record.AsMap()
-
-			path, ok := record.AsMap()["path"].(neo4j.Path)
-			if !ok {
-				continue
-			}
-
-			if i == 0 && len(path.Nodes) > 0 {
-				ipa = path.Nodes[0].Props["ipa"]
-			}
-
-			for _, node := range path.Nodes {
-				lang, ok := node.Props["lang"].(string)
-				if !ok {
-					continue
-				}
-				familySet[lang] = struct{}{}
-			}
-		}
+	// If no other languages were found, add English back
+	langSet := foreignLangs
+	if len(langSet) == 0 {
+		langSet = langsSeen
 	}
 
 	// Convert hash set to array
-	langNames := make([]string, 0, len(familySet))
-	for k := range familySet {
+	langNames := make([]string, 0, len(langSet))
+	for k := range langSet {
 		langNames = append(langNames, k)
 	}
 
@@ -264,7 +295,7 @@ func HandleGetEtymology(s *endpoints.Server, w http.ResponseWriter, r *http.Requ
 		familyTree = buildFamilyTree(lineages)
 	}
 
-	var geojson any
+	var geojson *geoJSONCollection
 
 	if includeGeojson {
 		// Heatmap diffusion. For each ancestor language, emit its own region
@@ -323,7 +354,7 @@ func HandleGetEtymology(s *endpoints.Server, w http.ResponseWriter, r *http.Requ
 			return
 		}
 
-		features := make([]any, 0, len(result.Records))
+		features := make([]geoFeature, 0, len(result.Records))
 		for _, record := range result.Records {
 			id, _ := record.Get("id")
 			idStr, _ := id.(string)
@@ -337,18 +368,17 @@ func HandleGetEtymology(s *endpoints.Server, w http.ResponseWriter, r *http.Requ
 			geometryJSON, _ := record.Get("json")
 			geometryStr, _ := geometryJSON.(string)
 
+			if !json.Valid([]byte(geometryStr)) {
+				continue
+			}
+
 			chain, _ := record.Get("chain")
 			chainList, _ := chain.([]interface{})
 			family, familyCode, ancestors := familyMetadata(chainList)
 
-			var geometry any
-			if err := json.Unmarshal([]byte(geometryStr), &geometry); err != nil {
-				continue
-			}
-
-			features = append(features, map[string]any{
-				"type": "Feature",
-				"properties": map[string]any{
+			features = append(features, geoFeature{
+				Type: "Feature",
+				Properties: map[string]any{
 					"id":         idStr,
 					"name":       nameStr,
 					"lang":       nameStr,
@@ -357,21 +387,21 @@ func HandleGetEtymology(s *endpoints.Server, w http.ResponseWriter, r *http.Requ
 					"familyCode": familyCode,
 					"ancestors":  ancestors,
 				},
-				"geometry": geometry,
+				Geometry: json.RawMessage(geometryStr),
 			})
 		}
 
-		geojson = map[string]any{
-			"type":     "FeatureCollection",
-			"features": features,
+		geojson = &geoJSONCollection{
+			Type:     "FeatureCollection",
+			Features: features,
 		}
 	}
 
-	response := map[string]any{
-		"graph":      records,
-		"familyTree": familyTree,
-		"geojson":    geojson,
-		"ipa":        ipa,
+	response := etymologyResponse{
+		Graph:      graph,
+		FamilyTree: familyTree,
+		GeoJSON:    geojson,
+		IPA:        ipa,
 	}
 
 	// Write to cache so that future queries are quick
@@ -381,8 +411,51 @@ func HandleGetEtymology(s *endpoints.Server, w http.ResponseWriter, r *http.Requ
 		s.WriteJSONError(w, http.StatusInternalServerError, "Failed to encode response")
 		return
 	}
+
+	// Cache and serve gzipped bytes for clients that accept gzip, letting
+	// them skip both re-compression and re-encoding on subsequent requests.
+	if acceptsGzip(r) {
+		if gz, err := gzipEncode(encoded); err == nil && len(gz) < len(encoded) {
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Header().Add("Vary", "Accept-Encoding")
+			s.WriteRawJSON(w, http.StatusOK, gz)
+			s.Cache.Set(r.Context(), cacheKey+":gzip", string(gz), 0)
+			return
+		}
+	}
 	s.WriteRawJSON(w, http.StatusOK, encoded)
-	s.Cache.Set(r.Context(), r.RequestURI, string(encoded), 0)
+	s.Cache.Set(r.Context(), cacheKey, string(encoded), 0)
+}
+
+// acceptsGzip reports whether the client advertised gzip support.
+func acceptsGzip(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
+}
+
+// gzipEncode compresses data with gzip at the default compression level.
+func gzipEncode(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	zw, err := gzip.NewWriterLevel(&buf, gzip.DefaultCompression)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := zw.Write(data); err != nil {
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// etymologyCacheKey normalizes the request URI into a stable cache key by
+// sorting query parameters, so identical requests with differently ordered
+// parameters share a cache entry.
+func etymologyCacheKey(r *http.Request) string {
+	if r.URL.RawQuery == "" {
+		return r.URL.Path
+	}
+	return r.URL.Path + "?" + r.URL.Query().Encode()
 }
 
 type historyResponse struct {

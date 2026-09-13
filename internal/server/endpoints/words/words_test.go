@@ -3,15 +3,20 @@ package words
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/jmuszka/larynx/internal/ai"
+	"github.com/jmuszka/larynx/internal/cache"
+	"github.com/jmuszka/larynx/internal/logging"
 	"github.com/jmuszka/larynx/internal/server/endpoints"
 	"github.com/jmuszka/larynx/internal/server/testutil"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -166,15 +171,21 @@ func TestUnescapeParam(t *testing.T) {
 func newEtymologyGraph(t *testing.T) *testutil.FakeGraphStore {
 	t.Helper()
 	calls := 0
+	head := map[string]any{"term": "test", "lang": "English", "ipa": "/wɜːd/"}
+	tail := map[string]any{"term": "teste", "lang": "Middle English"}
 	return &testutil.FakeGraphStore{
 		ExecuteFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
 			calls++
 			switch calls {
 			case 1:
 				return &neo4j.EagerResult{Records: []*neo4j.Record{
-					testutil.FakeRecord([]string{"path"}, []any{neo4j.Path{Nodes: []neo4j.Node{
-						{Props: map[string]any{"lang": "English", "ipa": "/wɜːd/"}},
-					}}}),
+					testutil.FakeRecord([]string{"head", "tail", "path"}, []any{
+						head,
+						tail,
+						neo4j.Path{Nodes: []neo4j.Node{
+							{Props: map[string]any{"lang": "English", "ipa": "/wɜːd/"}},
+						}},
+					}),
 				}}, nil
 			case 2:
 				return &neo4j.EagerResult{Records: []*neo4j.Record{
@@ -272,6 +283,21 @@ func TestHandleGetEtymology(t *testing.T) {
 		assert.Contains(t, resp, "graph")
 		assert.Contains(t, resp, "familyTree")
 		assert.Equal(t, "/wɜːd/", resp["ipa"])
+
+		graphResp, ok := resp["graph"].(map[string]any)
+		require.True(t, ok)
+		head, ok := graphResp["head"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "test", head["term"])
+
+		paths, ok := graphResp["paths"].([]any)
+		require.True(t, ok)
+		require.Len(t, paths, 1)
+		rec, ok := paths[0].(map[string]any)
+		require.True(t, ok)
+		assert.Contains(t, rec, "tail")
+		assert.Contains(t, rec, "path")
+		assert.NotContains(t, rec, "head")
 
 		ft, ok := resp["familyTree"].(map[string]any)
 		require.True(t, ok)
@@ -447,4 +473,143 @@ func TestHandleGetHistory(t *testing.T) {
 		assert.Equal(t, http.StatusBadGateway, w.Code)
 		assert.JSONEq(t, `{"error":"Failed to retrieve history summary"}`, w.Body.String())
 	})
+}
+
+// queenGraphRecords builds a queen-sized set of graph records: 108 rows whose
+// head node carries the heavy related_term-style array props observed in the
+// real dataset, each with a 13-node path.
+func queenGraphRecords(n int) []*neo4j.Record {
+	head := map[string]any{
+		"term":            "queen",
+		"lang":            "English",
+		"ipa":             "kwiːn",
+		"term_id":         "bGx8nN78WX-qNbHHwKBw_A",
+		"related_term":    strings.Split(strings.Repeat("x", 150), ""),
+		"related_term_id": strings.Split(strings.Repeat("y", 150), ""),
+		"related_lang":    strings.Split(strings.Repeat("z", 120), ""),
+		"group_tag":       strings.Split(strings.Repeat("g", 100), ""),
+		"parent_tag":      strings.Split(strings.Repeat("p", 100), ""),
+		"reltype":         strings.Split(strings.Repeat("r", 60), ""),
+	}
+
+	nodes := make([]neo4j.Node, 13)
+	rels := make([]neo4j.Relationship, 12)
+	for i := range nodes {
+		nodes[i] = neo4j.Node{Props: map[string]any{
+			"term": fmt.Sprintf("ancestor-%d", i),
+			"lang": fmt.Sprintf("Language %d", i),
+			"ipa":  "/test/",
+		}}
+	}
+	for i := range rels {
+		rels[i] = neo4j.Relationship{Type: "derived_from"}
+	}
+
+	records := make([]*neo4j.Record, n)
+	for i := range records {
+		tail := map[string]any{"term": fmt.Sprintf("tail-%d", i), "lang": "Ancient Greek"}
+		records[i] = testutil.FakeRecord([]string{"head", "tail", "path"}, []any{
+			head,
+			tail,
+			neo4j.Path{Nodes: nodes, Relationships: rels},
+		})
+	}
+	return records
+}
+
+func geoFeatureRecords(n int) []*neo4j.Record {
+	coords := make([]string, 0, 100)
+	for i := 0; i < 100; i++ {
+		coords = append(coords, fmt.Sprintf("[%d.%d,%d.%d]", i%180, i%90, (i+1)%180, (i+1)%90))
+	}
+	geometry := fmt.Sprintf(`{"type":"Polygon","coordinates":[[%s]]}`, strings.Join(coords, ","))
+
+	records := make([]*neo4j.Record, n)
+	for i := range records {
+		records[i] = testutil.FakeRecord([]string{"id", "name", "json", "count", "chain"}, []any{
+			fmt.Sprintf("lang%d", i),
+			fmt.Sprintf("Language %d", i),
+			geometry,
+			int64(3),
+			[]any{
+				map[string]any{"name": "Indo-European", "glottocode": "indo1319"},
+				map[string]any{"name": "Germanic", "glottocode": "germ1287"},
+				map[string]any{"name": "Anglic", "glottocode": "angc1293"},
+			},
+		})
+	}
+	return records
+}
+
+func lineageRecords() []*neo4j.Record {
+	return []*neo4j.Record{
+		testutil.FakeRecord([]string{"lineage"}, []any{[]any{
+			map[string]any{"name": "Indo-European", "glottocode": "indo1319"},
+			map[string]any{"name": "Germanic", "glottocode": "germ1287"},
+			map[string]any{"name": "West Germanic", "glottocode": "west2793"},
+		}}),
+	}
+}
+
+func benchmarkServer(b *testing.B, graphRecords []*neo4j.Record) (*endpoints.Server, *http.Request) {
+	b.Helper()
+	calls := 0
+	graph := &testutil.FakeGraphStore{ExecuteFn: func(ctx context.Context, query string, params map[string]any, opts ...neo4j.ExecuteQueryConfigurationOption) (*neo4j.EagerResult, error) {
+		calls++
+		switch calls {
+		case 1:
+			return &neo4j.EagerResult{Records: graphRecords}, nil
+		case 2:
+			return &neo4j.EagerResult{Records: lineageRecords()}, nil
+		case 3:
+			return &neo4j.EagerResult{Records: geoFeatureRecords(233)}, nil
+		}
+		return &neo4j.EagerResult{}, nil
+	}}
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		b.Fatal(err)
+	}
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	b.Cleanup(func() { client.Close(); mr.Close() })
+
+	logger, err := logging.New(logging.Config{Level: logging.LevelError})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(logger.Close)
+
+	s := endpoints.New(endpoints.Config{Logger: logger, Graph: graph, Cache: cache.New(client, nil)})
+	r := testutil.WithURLParam(httptest.NewRequest(http.MethodGet, "/words/queen/etymology", nil), "word", "queen")
+	return s, r
+}
+
+// runBenchmarkInvoke executes the handler once and evicts the resulting cache
+// entries so every iteration measures the full miss path.
+func runBenchmarkInvoke(s *endpoints.Server, w *httptest.ResponseRecorder, r *http.Request) {
+	HandleGetEtymology(s, w, r)
+	s.Cache.Delete(r.Context(), etymologyCacheKey(r))
+	s.Cache.Delete(r.Context(), etymologyCacheKey(r)+":gzip")
+}
+
+func BenchmarkHandleGetEtymology(b *testing.B) {
+	s, r := benchmarkServer(b, queenGraphRecords(108))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		w := httptest.NewRecorder()
+		runBenchmarkInvoke(s, w, r)
+	}
+}
+
+func BenchmarkHandleGetEtymologyGzip(b *testing.B) {
+	s, r := benchmarkServer(b, queenGraphRecords(108))
+	r.Header.Set("Accept-Encoding", "gzip")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		w := httptest.NewRecorder()
+		runBenchmarkInvoke(s, w, r)
+	}
 }

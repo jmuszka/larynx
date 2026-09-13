@@ -34,7 +34,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/server.articlesResponse"
+                            "$ref": "#/definitions/blog.articlesResponse"
                         }
                     },
                     "500": {
@@ -77,7 +77,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/server.createArticleRequest"
+                            "$ref": "#/definitions/blog.createArticleRequest"
                         }
                     }
                 ],
@@ -85,7 +85,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/server.createArticleResponse"
+                            "$ref": "#/definitions/blog.createArticleResponse"
                         }
                     },
                     "400": {
@@ -137,7 +137,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/server.article"
+                            "$ref": "#/definitions/blog.article"
                         }
                     },
                     "500": {
@@ -181,7 +181,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/server.messageResponse"
+                            "$ref": "#/definitions/blog.messageResponse"
                         }
                     },
                     "500": {
@@ -229,7 +229,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/server.updateArticleRequest"
+                            "$ref": "#/definitions/blog.updateArticleRequest"
                         }
                     }
                 ],
@@ -237,7 +237,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/server.messageResponse"
+                            "$ref": "#/definitions/blog.messageResponse"
                         }
                     },
                     "400": {
@@ -289,7 +289,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/server.geographyResponse"
+                            "$ref": "#/definitions/geography.geographyResponse"
                         }
                     },
                     "400": {
@@ -341,13 +341,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/server.healthResponse"
+                            "$ref": "#/definitions/health.healthResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/server.healthResponse"
+                            "$ref": "#/definitions/health.healthResponse"
                         }
                     }
                 }
@@ -448,7 +448,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/server.etymologyResponse"
+                            "$ref": "#/definitions/words.etymologyResponse"
                         }
                     },
                     "400": {
@@ -516,7 +516,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/server.historyResponse"
+                            "$ref": "#/definitions/words.historyResponse"
                         }
                     },
                     "400": {
@@ -560,7 +560,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "server.article": {
+        "blog.article": {
             "type": "object",
             "properties": {
                 "content": {
@@ -583,7 +583,7 @@ const docTemplate = `{
                 }
             }
         },
-        "server.articleSummary": {
+        "blog.articleSummary": {
             "type": "object",
             "properties": {
                 "description": {
@@ -603,18 +603,18 @@ const docTemplate = `{
                 }
             }
         },
-        "server.articlesResponse": {
+        "blog.articlesResponse": {
             "type": "object",
             "properties": {
                 "articles": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/server.articleSummary"
+                        "$ref": "#/definitions/blog.articleSummary"
                     }
                 }
             }
         },
-        "server.createArticleRequest": {
+        "blog.createArticleRequest": {
             "type": "object",
             "properties": {
                 "content": {
@@ -628,7 +628,7 @@ const docTemplate = `{
                 }
             }
         },
-        "server.createArticleResponse": {
+        "blog.createArticleResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -639,48 +639,29 @@ const docTemplate = `{
                 }
             }
         },
-        "server.etymologyResponse": {
+        "blog.messageResponse": {
             "type": "object",
             "properties": {
-                "familyTree": {
-                    "$ref": "#/definitions/server.familyNode"
-                },
-                "geojson": {
-                    "$ref": "#/definitions/server.geoJSON"
-                },
-                "graph": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": {}
-                    }
+                "message": {
+                    "type": "string"
                 }
             }
         },
-        "server.familyNode": {
+        "blog.updateArticleRequest": {
             "type": "object",
             "properties": {
-                "children": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/server.familyNode"
-                    }
-                },
-                "glottocode": {
+                "content": {
                     "type": "string"
                 },
-                "id": {
+                "description": {
                     "type": "string"
                 },
-                "name": {
+                "title": {
                     "type": "string"
-                },
-                "value": {
-                    "type": "integer"
                 }
             }
         },
-        "server.feature": {
+        "endpoints.Feature": {
             "type": "object",
             "properties": {
                 "geometry": {
@@ -697,13 +678,13 @@ const docTemplate = `{
                 }
             }
         },
-        "server.geoJSON": {
+        "endpoints.GeoJSON": {
             "type": "object",
             "properties": {
                 "features": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/server.feature"
+                        "$ref": "#/definitions/endpoints.Feature"
                     }
                 },
                 "type": {
@@ -712,15 +693,15 @@ const docTemplate = `{
                 }
             }
         },
-        "server.geographyResponse": {
+        "geography.geographyResponse": {
             "type": "object",
             "properties": {
                 "geojson": {
-                    "$ref": "#/definitions/server.geoJSON"
+                    "$ref": "#/definitions/endpoints.GeoJSON"
                 }
             }
         },
-        "server.healthResponse": {
+        "health.healthResponse": {
             "type": "object",
             "properties": {
                 "services": {
@@ -737,7 +718,86 @@ const docTemplate = `{
                 }
             }
         },
-        "server.historyResponse": {
+        "words.etymologyResponse": {
+            "type": "object",
+            "properties": {
+                "familyTree": {
+                    "$ref": "#/definitions/words.familyNode"
+                },
+                "geojson": {
+                    "$ref": "#/definitions/words.geoJSONCollection"
+                },
+                "graph": {
+                    "$ref": "#/definitions/words.graphResponse"
+                },
+                "ipa": {}
+            }
+        },
+        "words.familyNode": {
+            "type": "object",
+            "properties": {
+                "children": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/words.familyNode"
+                    }
+                },
+                "glottocode": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "integer"
+                }
+            }
+        },
+        "words.geoFeature": {
+            "type": "object",
+            "properties": {
+                "properties": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "words.geoJSONCollection": {
+            "type": "object",
+            "properties": {
+                "features": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/words.geoFeature"
+                    }
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "words.graphResponse": {
+            "type": "object",
+            "properties": {
+                "head": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/words.pathRecord"
+                    }
+                }
+            }
+        },
+        "words.historyResponse": {
             "type": "object",
             "properties": {
                 "history": {
@@ -748,25 +808,12 @@ const docTemplate = `{
                 }
             }
         },
-        "server.messageResponse": {
+        "words.pathRecord": {
             "type": "object",
             "properties": {
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "server.updateArticleRequest": {
-            "type": "object",
-            "properties": {
-                "content": {
-                    "type": "string"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
+                "tail": {
+                    "type": "object",
+                    "additionalProperties": {}
                 }
             }
         }

@@ -1,6 +1,6 @@
 basePath: /api/v1
 definitions:
-  server.article:
+  blog.article:
     properties:
       content:
         type: string
@@ -15,7 +15,7 @@ definitions:
       title:
         type: string
     type: object
-  server.articleSummary:
+  blog.articleSummary:
     properties:
       description:
         type: string
@@ -28,14 +28,14 @@ definitions:
       title:
         type: string
     type: object
-  server.articlesResponse:
+  blog.articlesResponse:
     properties:
       articles:
         items:
-          $ref: '#/definitions/server.articleSummary'
+          $ref: '#/definitions/blog.articleSummary'
         type: array
     type: object
-  server.createArticleRequest:
+  blog.createArticleRequest:
     properties:
       content:
         type: string
@@ -44,41 +44,28 @@ definitions:
       title:
         type: string
     type: object
-  server.createArticleResponse:
+  blog.createArticleResponse:
     properties:
       message:
         type: string
       slug:
         type: string
     type: object
-  server.etymologyResponse:
+  blog.messageResponse:
     properties:
-      familyTree:
-        $ref: '#/definitions/server.familyNode'
-      geojson:
-        $ref: '#/definitions/server.geoJSON'
-      graph:
-        items:
-          additionalProperties: {}
-          type: object
-        type: array
+      message:
+        type: string
     type: object
-  server.familyNode:
+  blog.updateArticleRequest:
     properties:
-      children:
-        items:
-          $ref: '#/definitions/server.familyNode'
-        type: array
-      glottocode:
+      content:
         type: string
-      id:
+      description:
         type: string
-      name:
+      title:
         type: string
-      value:
-        type: integer
     type: object
-  server.feature:
+  endpoints.Feature:
     properties:
       geometry:
         additionalProperties: {}
@@ -90,22 +77,22 @@ definitions:
         example: Feature
         type: string
     type: object
-  server.geoJSON:
+  endpoints.GeoJSON:
     properties:
       features:
         items:
-          $ref: '#/definitions/server.feature'
+          $ref: '#/definitions/endpoints.Feature'
         type: array
       type:
         example: FeatureCollection
         type: string
     type: object
-  server.geographyResponse:
+  geography.geographyResponse:
     properties:
       geojson:
-        $ref: '#/definitions/server.geoJSON'
+        $ref: '#/definitions/endpoints.GeoJSON'
     type: object
-  server.healthResponse:
+  health.healthResponse:
     properties:
       services:
         additionalProperties:
@@ -116,26 +103,70 @@ definitions:
       version:
         type: string
     type: object
-  server.historyResponse:
+  words.etymologyResponse:
+    properties:
+      familyTree:
+        $ref: '#/definitions/words.familyNode'
+      geojson:
+        $ref: '#/definitions/words.geoJSONCollection'
+      graph:
+        $ref: '#/definitions/words.graphResponse'
+      ipa: {}
+    type: object
+  words.familyNode:
+    properties:
+      children:
+        items:
+          $ref: '#/definitions/words.familyNode'
+        type: array
+      glottocode:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      value:
+        type: integer
+    type: object
+  words.geoFeature:
+    properties:
+      properties:
+        additionalProperties: {}
+        type: object
+      type:
+        type: string
+    type: object
+  words.geoJSONCollection:
+    properties:
+      features:
+        items:
+          $ref: '#/definitions/words.geoFeature'
+        type: array
+      type:
+        type: string
+    type: object
+  words.graphResponse:
+    properties:
+      head:
+        additionalProperties: {}
+        type: object
+      paths:
+        items:
+          $ref: '#/definitions/words.pathRecord'
+        type: array
+    type: object
+  words.historyResponse:
     properties:
       history:
         type: string
       word:
         type: string
     type: object
-  server.messageResponse:
+  words.pathRecord:
     properties:
-      message:
-        type: string
-    type: object
-  server.updateArticleRequest:
-    properties:
-      content:
-        type: string
-      description:
-        type: string
-      title:
-        type: string
+      tail:
+        additionalProperties: {}
+        type: object
     type: object
 info:
   contact: {}
@@ -152,7 +183,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/server.articlesResponse'
+            $ref: '#/definitions/blog.articlesResponse'
         "500":
           description: Internal Server Error
           schema:
@@ -179,7 +210,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/server.messageResponse'
+            $ref: '#/definitions/blog.messageResponse'
         "500":
           description: Internal Server Error
           schema:
@@ -206,7 +237,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/server.article'
+            $ref: '#/definitions/blog.article'
         "500":
           description: Internal Server Error
           schema:
@@ -233,14 +264,14 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/server.updateArticleRequest'
+          $ref: '#/definitions/blog.updateArticleRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/server.messageResponse'
+            $ref: '#/definitions/blog.messageResponse'
         "400":
           description: Bad Request
           schema:
@@ -271,14 +302,14 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/server.createArticleRequest'
+          $ref: '#/definitions/blog.createArticleRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/server.createArticleResponse'
+            $ref: '#/definitions/blog.createArticleResponse'
         "400":
           description: Bad Request
           schema:
@@ -313,7 +344,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/server.geographyResponse'
+            $ref: '#/definitions/geography.geographyResponse'
         "400":
           description: Bad Request
           schema:
@@ -346,11 +377,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/server.healthResponse'
+            $ref: '#/definitions/health.healthResponse'
         "503":
           description: Service Unavailable
           schema:
-            $ref: '#/definitions/server.healthResponse'
+            $ref: '#/definitions/health.healthResponse'
       security:
       - BearerAuth: []
       summary: Health check
@@ -416,7 +447,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/server.etymologyResponse'
+            $ref: '#/definitions/words.etymologyResponse'
         "400":
           description: Bad Request
           schema:
@@ -460,7 +491,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/server.historyResponse'
+            $ref: '#/definitions/words.historyResponse'
         "400":
           description: Bad Request
           schema:
