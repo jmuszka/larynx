@@ -125,7 +125,7 @@ func New(cfg Config) *Server {
 		httpClient: httpClient,
 		eps: endpoints.New(endpoints.Config{
 			Logger:           cfg.Logger,
-			Graph:            &neo4jStore{driver: driver},
+			Graph:            &neo4jStore{driver: driver, logger: cfg.Logger},
 			DB:               db,
 			Cache:            cache,
 			AI:               aiService,
@@ -145,6 +145,8 @@ func New(cfg Config) *Server {
 	// CORS
 	if cfg.DebugMode {
 		r.Use(cors.AllowAll().Handler)
+		// pprof profiling endpoints, only in debug mode
+		r.Mount("/debug", middleware.Profiler())
 	} else {
 		r.Use(cors.Handler(cors.Options{
 			AllowedOrigins:   cfg.AllowedOrigins,
