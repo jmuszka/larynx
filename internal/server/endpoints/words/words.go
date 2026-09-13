@@ -125,9 +125,13 @@ func HandleGetEtymology(s *endpoints.Server, w http.ResponseWriter, r *http.Requ
 	/* Get graph pathways */
 	cypher := `
 		MATCH path = (head: Word {term: $word, lang: $lang}) (()-[:abbreviation_of|` + "`back-formation_from`" + `|blend_of|borrowed_from|calque_of|clipping_of|compound_of|derived_from|doublet_with|has_affix|has_confix|has_prefix|has_prefix_with_root|has_root|has_suffix|inherited_from|initialism_of|is_onomatopoeic|learned_borrowing_from|named_after|orthographic_borrowing_from|` + "`phono-semantic_matching_of`" + `|semantic_loan_of|` + "`semi_learned_borrowing_from`" + `|unadapted_borrowing_from]->()){0,} (tail: Word)
-		WITH head, tail, path
-		ORDER BY length(path) DESC 
-		RETURN head, tail, head(collect(path)) AS path
+		WITH head, tail, path, length(path) AS len
+		ORDER BY len DESC
+		WITH head, tail, collect(path) AS paths, max(len) AS maxLen 
+		UNWIND paths AS p 
+		WITH head, tail, maxLen, p 
+		WHERE length(p) = maxLen 
+		RETURN head, tail, p AS path
 	`
 	params := map[string]any{
 		"word": word,
